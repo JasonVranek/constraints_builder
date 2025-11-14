@@ -586,6 +586,14 @@ impl<
                 debug!(constraint_idx, tx_idx, "Constraint transaction missing, appending");
 
                 match self.execute_constraint_transaction(raw_tx_bytes, local_ctx) {
+                    Ok(true) => {
+                        // Transaction successfully appended, track its hash
+                        if let Some(last_tx) = self.partial_block.executed_tx_infos.last() {
+                            let tx_hash = last_tx.tx.hash();
+                            self.built_block_trace.appended_constraint_txs.push(tx_hash);
+                            debug!(constraint_idx, tx_idx, %tx_hash, "Constraint transaction successfully appended and tracked");
+                        }
+                    }
                     Ok(false) => debug!(constraint_idx, tx_idx, "Constraint transaction failed"),
                     Err(err) => {
                         error!(
@@ -596,7 +604,6 @@ impl<
                         );
                         return Err(err);
                     }
-                    _ => {}
                 }
             }
         }

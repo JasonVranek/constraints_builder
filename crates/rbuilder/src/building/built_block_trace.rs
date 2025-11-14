@@ -60,6 +60,8 @@ pub struct BuiltBlockTrace {
     pub filtered_build_considered_orders_statistics: OrderStatistics,
     /// Anything we call BlockBuildingHelper::commit_order on but didn't include (redundant with filtered_build_considered_orders_statistics-included_orders) during pre-filtered build step
     pub filtered_build_failed_orders_statistics: OrderStatistics,
+    /// Transaction hashes of constraint transactions that were appended during block building
+    pub appended_constraint_txs: Vec<TxHash>,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -102,6 +104,7 @@ impl BuiltBlockTrace {
             build_block_id,
             subsidy: I256::ZERO,
             multi_bid_copy_duration: Duration::ZERO,
+            appended_constraint_txs: Vec::new(),
         }
     }
 

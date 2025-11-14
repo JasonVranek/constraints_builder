@@ -4,8 +4,9 @@
 use super::{
     base_config::BaseConfig,
     block_output::{
+        self,
         bidding_service_interface::{
-            BidObserver, BiddingService, LandedBlockInfo, NullBidObserver,
+            BidObserver, BiddingService, LandedBlockInfo,
         },
         relay_submit::{OptimisticConfig, RelaySubmitSinkFactory, SubmissionConfig},
         true_value_bidding_service::NewTrueBlockValueBiddingService,
@@ -521,13 +522,25 @@ impl LiveBuilderConfig for Config {
         let (wallet_balance_watcher, _) =
             create_wallet_balance_watcher(provider.clone(), &self.base_config).await?;
 
+        // Create constraint proof storage and RPC server
+        let proof_storage = block_output::constraint_proof_storage::ConstraintProofStorage::new();
+
+        // Start constraint proof RPC server
+        let proof_rpc_config = block_output::constraint_proof_rpc::ConstraintProofRpcConfig::default();
+        block_output::constraint_proof_rpc::start_constraint_proof_rpc(
+            proof_rpc_config,
+            proof_storage.clone(),
+            cancellation_token.clone(),
+        )
+        .await?;
+
         let (sink_factory, slot_info_provider, adjustment_fee_payers) =
             create_sink_factory_and_relays(
                 &self.base_config,
                 &self.l1_config,
                 bidding_service.relay_sets(),
                 wallet_balance_watcher,
-                Box::new(NullBidObserver {}),
+                Box::new(block_output::constraint_proof_observer::ConstraintProofObserver::new(proof_storage)),
                 bidding_service,
                 cancellation_token.clone(),
             )

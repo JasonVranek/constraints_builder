@@ -79,6 +79,7 @@ pub mod block_orders;
 pub mod builders;
 pub mod built_block_trace;
 pub mod cached_reads;
+pub mod constraint_proofs;
 #[cfg(test)]
 pub mod conflict;
 pub mod evm;
