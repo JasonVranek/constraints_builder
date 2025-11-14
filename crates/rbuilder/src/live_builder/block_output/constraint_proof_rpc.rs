@@ -19,7 +19,7 @@ impl Default for ConstraintProofRpcConfig {
     fn default() -> Self {
         Self {
             server_ip: std::net::Ipv4Addr::new(127, 0, 0, 1),
-            server_port: 8548,  // Next in sequence after constraint RPC (8547)
+            server_port: 9548,  // Higher port to avoid conflicts with other services
             max_connections: 100,
         }
     }
