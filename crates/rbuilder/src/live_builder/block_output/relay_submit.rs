@@ -337,7 +337,19 @@ async fn run_submit_to_relays_job(
                 &config.optimistic_v3_config,
                 &submission_span,
                 &cancel,
-            )
+            );
+
+            // Notify observer for regular relay submissions
+            submission_span.in_scope(|| {
+                config.bid_observer.block_submitted(
+                    &slot_data,
+                    request.clone(),
+                    Arc::new(block.trace.clone()),
+                    builder_name.clone(),
+                    bid_metadata.value.top_competitor_bid.unwrap_or_default(),
+                    &relay_set,
+                );
+            });
         }
 
         let optimistic_request = optimistic_request
