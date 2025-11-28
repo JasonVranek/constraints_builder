@@ -1,4 +1,5 @@
 use super::constraint_proof_storage::{ConstraintProofStorage, ProofsResponse};
+use crate::live_builder::base_config::{default_ip, DEFAULT_CONSTRAINT_PROOF_RPC_PORT};
 use jsonrpsee::{server::Server, RpcModule};
 use std::net::{SocketAddr, SocketAddrV4};
 use tokio::task::JoinHandle;
@@ -18,8 +19,8 @@ pub struct ConstraintProofRpcConfig {
 impl Default for ConstraintProofRpcConfig {
     fn default() -> Self {
         Self {
-            server_ip: std::net::Ipv4Addr::new(127, 0, 0, 1),
-            server_port: 9548,  // Higher port to avoid conflicts with other services
+            server_ip: default_ip(),
+            server_port: DEFAULT_CONSTRAINT_PROOF_RPC_PORT,
             max_connections: 100,
         }
     }

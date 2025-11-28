@@ -526,7 +526,11 @@ impl LiveBuilderConfig for Config {
         let proof_storage = block_output::constraint_proof_storage::ConstraintProofStorage::new();
 
         // Start constraint proof RPC server
-        let proof_rpc_config = block_output::constraint_proof_rpc::ConstraintProofRpcConfig::default();
+        let proof_rpc_config = block_output::constraint_proof_rpc::ConstraintProofRpcConfig {
+            server_ip: self.base_config.constraint_proof_rpc_ip,
+            server_port: self.base_config.constraint_proof_rpc_port,
+            max_connections: 100,
+        };
         block_output::constraint_proof_rpc::start_constraint_proof_rpc(
             proof_rpc_config,
             proof_storage.clone(),
