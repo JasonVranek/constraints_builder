@@ -36,7 +36,7 @@ use block_list_provider::BlockListProvider;
 use block_output::unfinished_block_processing::UnfinishedBuiltBlocksInputFactory;
 use building::BlockBuildingPool;
 use eyre::Context;
-use fabric_constraints::types::Constraint;
+use fabric_constraints::types::ConstraintsMessage;
 use fabric_inclusion::types::InclusionPayload;
 use jsonrpsee::RpcModule;
 use order_input::ReplaceableOrderPoolCommand;
@@ -320,10 +320,11 @@ where
             )?;
 
             // Collect constraints upfront to pass into the builder context
-            let constraints = constraintpool_subscriber.get_constraints_for_block(payload.block());
+            // let constraints = constraintpool_subscriber.get_constraints_for_block(payload.block());
+            let constraints_message = constraintpool_subscriber.get_constraints_for_slot(payload.slot());
             
             // Calculate gas to reserve for constraints based on their transaction gas limits
-            let constraint_reserved_gas = calculate_constraint_gas_reservation(&constraints)?;
+            let constraint_reserved_gas = calculate_constraint_gas_reservation(&constraints_message)?;
 
             let root_hasher =
                 Arc::from(self.provider.root_hasher(payload.parent_block_num_hash())?);
@@ -347,7 +348,7 @@ where
                     .iter()
                     .filter_map(|(_, r)| r.adjustment_fee_payer)
                     .collect(),
-                constraints,
+                    constraints_message.constraints,
                 constraint_reserved_gas,
             ) {
                 if constraint_reserved_gas > 0 {
@@ -511,12 +512,12 @@ async fn try_send_to_orderpool<V, T, S>(
 }
 
 /// Calculate gas to reserve for constraints based on their transaction gas limits
-fn calculate_constraint_gas_reservation(constraints: &[Constraint]) -> eyre::Result<u64> {
+fn calculate_constraint_gas_reservation(constraints_message: &ConstraintsMessage) -> eyre::Result<u64> {
     let mut total_gas = 0u64;
     let mut valid_tx_count = 0usize;
     let mut invalid_tx_count = 0usize;
     
-    for constraint in constraints {
+    for constraint in constraints_message.constraints.iter() {
         let payload = InclusionPayload::abi_decode(&constraint.payload)?;
         match payload.gas() {
             Ok(gas) => {
@@ -529,9 +530,9 @@ fn calculate_constraint_gas_reservation(constraints: &[Constraint]) -> eyre::Res
         }
     }
     
-    if !constraints.is_empty() {
+    if !constraints_message.constraints.is_empty() {
         info!(
-            constraints = constraints.len(),
+            constraints = constraints_message.constraints.len(),
             valid_txs = valid_tx_count,
             invalid_txs = invalid_tx_count,
             reserved_gas = total_gas,
