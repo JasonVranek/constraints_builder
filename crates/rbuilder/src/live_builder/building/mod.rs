@@ -10,8 +10,7 @@ use crate::{
         building::built_block_cache::BuiltBlockCache,
         order_flow_tracing::order_flow_tracer_manager::OrderFlowTracerManager,
         order_input::replaceable_order_sink::ReplaceableOrderSink,
-        payload_events::MevBoostSlotData,
-        simulation::SlotOrderSimResults,
+        payload_events::MevBoostSlotData, simulation::SlotOrderSimResults,
     },
     provider::StateProviderFactory,
 };

@@ -594,11 +594,7 @@ impl<
 
             // Constraint transaction not found, append it
             missing_constraint_count += 1;
-            debug!(
-                constraint_idx,
-                "Constraint transaction missing, appending"
-            );
-
+            debug!(constraint_idx, "Constraint transaction missing, appending");
 
             // Encode the transaction and execute it
             let raw_tx_bytes = Bytes::from(alloy_rlp::encode(&tx).to_vec());
@@ -611,7 +607,9 @@ impl<
                         debug!(constraint_idx, %tx_hash, "Constraint transaction successfully appended and tracked");
                     }
                 }
-                Ok(false) => debug!(constraint_idx, tx_hash = ?constraint_tx_hash, "Constraint transaction failed"),
+                Ok(false) => {
+                    debug!(constraint_idx, tx_hash = ?constraint_tx_hash, "Constraint transaction failed")
+                }
                 Err(err) => {
                     error!(
                         constraint_idx,

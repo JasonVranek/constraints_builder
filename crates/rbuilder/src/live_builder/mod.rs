@@ -4,8 +4,8 @@ pub mod block_output;
 pub mod building;
 pub mod cli;
 pub mod config;
-pub mod order_flow_tracing;
 pub mod constraint_input;
+pub mod order_flow_tracing;
 pub mod order_input;
 pub mod payload_events;
 pub mod simulation;
@@ -179,7 +179,7 @@ where
         let (header_sender, header_receiver) = mpsc::channel(CLEAN_TASKS_CHANNEL_SIZE);
 
         let orderpool_sender_for_constraints = self.orderpool_sender.clone();
-        
+
         let orderpool_subscriber = {
             let (handle, sub) = start_orderpool_jobs(
                 self.order_input_config,
@@ -321,10 +321,12 @@ where
 
             // Collect constraints upfront to pass into the builder context
             // let constraints = constraintpool_subscriber.get_constraints_for_block(payload.block());
-            let constraints_message = constraintpool_subscriber.get_constraints_for_slot(payload.slot());
-            
+            let constraints_message =
+                constraintpool_subscriber.get_constraints_for_slot(payload.slot());
+
             // Calculate gas to reserve for constraints based on their transaction gas limits
-            let constraint_reserved_gas = calculate_constraint_gas_reservation(&constraints_message)?;
+            let constraint_reserved_gas =
+                calculate_constraint_gas_reservation(&constraints_message)?;
 
             let root_hasher =
                 Arc::from(self.provider.root_hasher(payload.parent_block_num_hash())?);
@@ -348,7 +350,7 @@ where
                     .iter()
                     .filter_map(|(_, r)| r.adjustment_fee_payer)
                     .collect(),
-                    constraints_message.constraints,
+                constraints_message.constraints,
                 constraint_reserved_gas,
             ) {
                 if constraint_reserved_gas > 0 {
@@ -512,11 +514,13 @@ async fn try_send_to_orderpool<V, T, S>(
 }
 
 /// Calculate gas to reserve for constraints based on their transaction gas limits
-fn calculate_constraint_gas_reservation(constraints_message: &ConstraintsMessage) -> eyre::Result<u64> {
+fn calculate_constraint_gas_reservation(
+    constraints_message: &ConstraintsMessage,
+) -> eyre::Result<u64> {
     let mut total_gas = 0u64;
     let mut valid_tx_count = 0usize;
     let mut invalid_tx_count = 0usize;
-    
+
     for constraint in constraints_message.constraints.iter() {
         let payload = InclusionPayload::abi_decode(&constraint.payload)?;
         match payload.gas() {
@@ -529,7 +533,7 @@ fn calculate_constraint_gas_reservation(constraints_message: &ConstraintsMessage
             }
         }
     }
-    
+
     if !constraints_message.constraints.is_empty() {
         info!(
             constraints = constraints_message.constraints.len(),
@@ -539,6 +543,6 @@ fn calculate_constraint_gas_reservation(constraints_message: &ConstraintsMessage
             "Calculated constraint gas reservation"
         );
     }
-    
+
     Ok(total_gas)
 }

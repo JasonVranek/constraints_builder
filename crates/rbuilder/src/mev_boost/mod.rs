@@ -21,8 +21,10 @@ use url::Url;
 
 pub mod block_merging;
 pub mod bloxroute_grpc;
+use block_merging::{
+    extract_submission_metadata, BlockMergingData, SignedBidSubmissionWithMergingData,
+};
 use bloxroute_grpc::GrpcRelayClient;
-use block_merging::{BlockMergingData, SignedBidSubmissionWithMergingData, extract_submission_metadata};
 
 mod error;
 pub mod fake_mev_boost_relay;
@@ -716,9 +718,11 @@ impl RelayClient {
         let mut headers = HeaderMap::new();
         // Helper to create submission with merging data
         let create_merging_submission = || {
-            let (fee_recipient, transaction_count) = extract_submission_metadata(&submission_with_metadata.submission);
+            let (fee_recipient, transaction_count) =
+                extract_submission_metadata(&submission_with_metadata.submission);
             tracing::debug!(relay = %self.url, "{} transactions available for merging", transaction_count);
-            let merging_data = BlockMergingData::for_all_transactions(fee_recipient, transaction_count);
+            let merging_data =
+                BlockMergingData::for_all_transactions(fee_recipient, transaction_count);
             SignedBidSubmissionWithMergingData {
                 submission: submission_with_metadata.submission.clone(),
                 merging_data,
@@ -923,7 +927,15 @@ impl RelayClient {
         }
 
         let response = self
-            .call_relay_submit_block(data, registration, ssz, gzip, fake_relay, cancellations, supports_block_merging)
+            .call_relay_submit_block(
+                data,
+                registration,
+                ssz,
+                gzip,
+                fake_relay,
+                cancellations,
+                supports_block_merging,
+            )
             .await?;
 
         map_response(response).await

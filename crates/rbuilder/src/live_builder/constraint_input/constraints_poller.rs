@@ -1,28 +1,29 @@
 use super::ConstraintInputConfig;
 use crate::{
-    live_builder::order_input::ReplaceableOrderPoolCommand,
-    telemetry::inc_order_input_rpc_errors
-};
-use fabric_constraints::{client::{ConstraintsClient, HttpConstraintsClient}, types::ConstraintsMessage};
-use fabric_inclusion::types::InclusionPayload;
-use rbuilder_primitives::{
-    Bundle, BundleVersion, Metadata, Order,
-    serialize::{RawTx, TxEncoding}
+    live_builder::order_input::ReplaceableOrderPoolCommand, telemetry::inc_order_input_rpc_errors,
 };
 use alloy_primitives::Bytes;
 use eyre::Context;
-use tokio::{
-    sync::mpsc,
-    task::JoinHandle,
+use fabric_constraints::{
+    client::{ConstraintsClient, HttpConstraintsClient},
+    types::ConstraintsMessage,
 };
+use fabric_inclusion::types::InclusionPayload;
+use rbuilder_primitives::{
+    serialize::{RawTx, TxEncoding},
+    Bundle, BundleVersion, Metadata, Order,
+};
+use tokio::{sync::mpsc, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, warn};
 use uuid::Uuid;
 
 /// Convert each transaction in constraint to individual bundles for order pipeline
-fn constraint_to_individual_bundles(constraints_message: &ConstraintsMessage) -> eyre::Result<Vec<Bundle>> {
+fn constraint_to_individual_bundles(
+    constraints_message: &ConstraintsMessage,
+) -> eyre::Result<Vec<Bundle>> {
     let mut bundles = Vec::new();
-    
+
     for constraint in constraints_message.constraints.iter() {
         let payload = InclusionPayload::abi_decode(&constraint.payload)?;
         let tx = payload.decode_transaction()?;
@@ -37,7 +38,7 @@ fn constraint_to_individual_bundles(constraints_message: &ConstraintsMessage) ->
             block: None,
             min_timestamp: None,
             max_timestamp: None,
-            txs: vec![tx_with_blobs], // Single transaction per bundle
+            txs: vec![tx_with_blobs],    // Single transaction per bundle
             reverting_tx_hashes: vec![], // Constraints must succeed
             dropping_tx_hashes: vec![],
             hash: *tx.hash(), // Use constraint tx hash as base for bundle hash
@@ -56,7 +57,10 @@ fn constraint_to_individual_bundles(constraints_message: &ConstraintsMessage) ->
 }
 
 fn get_next_slot(genesis_timestamp: u64) -> u64 {
-    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).expect("Failed to get current time").as_secs();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("Failed to get current time")
+        .as_secs();
     let slot = (now - genesis_timestamp) / 12;
     slot + 1
 }
@@ -91,8 +95,13 @@ pub async fn run(
                                 for bundle in constraint_bundles {
                                     let order = Order::Bundle(bundle);
                                     let order_command = ReplaceableOrderPoolCommand::Order(order);
-                                    if let Err(e) = order_sender.send_timeout(order_command, timeout).await {
-                                        warn!(?e, "Failed to send constraint bundle to order pipeline");
+                                    if let Err(e) =
+                                        order_sender.send_timeout(order_command, timeout).await
+                                    {
+                                        warn!(
+                                            ?e,
+                                            "Failed to send constraint bundle to order pipeline"
+                                        );
                                     } else {
                                         sent_count += 1;
                                     }
@@ -100,12 +109,18 @@ pub async fn run(
                                 debug!(slot, sent_count, "Sent constraint transactions as individual bundles to order pipeline");
                             }
                             Err(e) => {
-                                warn!(?e, slot, "Failed to convert constraint to individual bundles");
+                                warn!(
+                                    ?e,
+                                    slot, "Failed to convert constraint to individual bundles"
+                                );
                             }
                         }
 
                         // Always send to constraint pipeline for fallback
-                        match results.send_timeout(constraints_message.clone(), timeout).await {
+                        match results
+                            .send_timeout(constraints_message.clone(), timeout)
+                            .await
+                        {
                             Ok(()) => {
                                 debug!(slot, "Sent constraint to constraint pipeline");
                             }

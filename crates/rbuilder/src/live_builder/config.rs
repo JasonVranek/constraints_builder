@@ -5,7 +5,7 @@ use super::{
     base_config::BaseConfig,
     block_output::{
         bidding_service_interface::{
-            BidObserver, BiddingService, LandedBlockInfo, NullBidObserver
+            BidObserver, BiddingService, LandedBlockInfo, NullBidObserver,
         },
         relay_submit::{OptimisticConfig, RelaySubmitSinkFactory, SubmissionConfig},
         true_value_bidding_service::NewTrueBlockValueBiddingService,
@@ -1199,9 +1199,9 @@ mod test {
 
         unsafe {
             env::set_var(
-            "COINBASE_SECRET_KEY",
-            "0xb785cd753d62bb25c0afaf75fd40dd94bf295051fdadc972ec857ad6b29cfa72",
-        );
+                "COINBASE_SECRET_KEY",
+                "0xb785cd753d62bb25c0afaf75fd40dd94bf295051fdadc972ec857ad6b29cfa72",
+            );
 
             env::set_var("CL_NODE_URL", "http://localhost:3500");
         }

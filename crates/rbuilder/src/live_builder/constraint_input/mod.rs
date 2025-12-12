@@ -30,7 +30,6 @@ pub struct ConstraintInputConfig {
     pub genesis_timestamp: u64,
 }
 
-
 /// Default values for constraint input configuration
 pub const DEFAULT_SERVE_MAX_CONNECTIONS: u32 = 4096;
 pub const DEFAULT_RESULTS_CHANNEL_TIMEOUT: Duration = Duration::from_millis(50);
@@ -119,7 +118,8 @@ pub async fn start_constraintpool_jobs(
             mpsc::channel::<ConstraintsMessage>(CONSTRAINT_INPUT_BUFFER);
 
         let poller_handle =
-            constraints_poller::run(config, constraint_tx, order_sender, global_cancel.clone()).await?;
+            constraints_poller::run(config, constraint_tx, order_sender, global_cancel.clone())
+                .await?;
 
         // Bridge poller constraints to pool commands
         tokio::spawn({

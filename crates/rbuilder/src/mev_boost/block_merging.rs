@@ -65,10 +65,12 @@ impl BlockMergingData {
     /// giving the relay maximum flexibility for block merging.
     pub fn for_all_transactions(builder_address: Address, transaction_count: usize) -> Self {
         let merge_orders = (0..transaction_count)
-            .map(|index| Order::Tx(TransactionOrder {
-                index,
-                can_revert: true, // Allow revert for maximum relay flexibility
-            }))
+            .map(|index| {
+                Order::Tx(TransactionOrder {
+                    index,
+                    can_revert: true, // Allow revert for maximum relay flexibility
+                })
+            })
             .collect();
 
         Self {
@@ -84,17 +86,42 @@ impl BlockMergingData {
 pub fn extract_submission_metadata(request: &SubmitBlockRequest) -> (Address, usize) {
     use alloy_rpc_types_beacon::relay::SubmitBlockRequest as AlloySubmitBlockRequest;
     match request.request.as_ref() {
-        AlloySubmitBlockRequest::Capella(req) => {
-            (req.execution_payload.payload_inner.fee_recipient, req.execution_payload.payload_inner.transactions.len())
-        },
-        AlloySubmitBlockRequest::Deneb(req) => {
-            (req.execution_payload.payload_inner.payload_inner.fee_recipient, req.execution_payload.payload_inner.payload_inner.transactions.len())
-        },
-        AlloySubmitBlockRequest::Electra(req) => {
-            (req.execution_payload.payload_inner.payload_inner.fee_recipient, req.execution_payload.payload_inner.payload_inner.transactions.len())
-        },
-        AlloySubmitBlockRequest::Fulu(req) => {
-            (req.execution_payload.payload_inner.payload_inner.fee_recipient, req.execution_payload.payload_inner.payload_inner.transactions.len())
-        },
+        AlloySubmitBlockRequest::Capella(req) => (
+            req.execution_payload.payload_inner.fee_recipient,
+            req.execution_payload.payload_inner.transactions.len(),
+        ),
+        AlloySubmitBlockRequest::Deneb(req) => (
+            req.execution_payload
+                .payload_inner
+                .payload_inner
+                .fee_recipient,
+            req.execution_payload
+                .payload_inner
+                .payload_inner
+                .transactions
+                .len(),
+        ),
+        AlloySubmitBlockRequest::Electra(req) => (
+            req.execution_payload
+                .payload_inner
+                .payload_inner
+                .fee_recipient,
+            req.execution_payload
+                .payload_inner
+                .payload_inner
+                .transactions
+                .len(),
+        ),
+        AlloySubmitBlockRequest::Fulu(req) => (
+            req.execution_payload
+                .payload_inner
+                .payload_inner
+                .fee_recipient,
+            req.execution_payload
+                .payload_inner
+                .payload_inner
+                .transactions
+                .len(),
+        ),
     }
 }

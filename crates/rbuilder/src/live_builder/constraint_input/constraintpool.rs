@@ -1,9 +1,9 @@
 use ahash::HashMap;
+use fabric_constraints::types::ConstraintsMessage;
 use lru::LruCache;
 use std::num::NonZeroUsize;
 use tokio::sync::mpsc;
 use tracing::trace;
-use fabric_constraints::types::ConstraintsMessage;
 
 use super::constraint_sink::{
     ConstraintPoolCommand, ConstraintSender2ConstraintSink, ConstraintSink,
@@ -132,9 +132,7 @@ impl ConstraintPool {
             if sub.slot == target_slot {
                 let ok = match command.clone() {
                     ConstraintPoolCommand::Insert(c) => sub.sink.insert_constraint(c),
-                    ConstraintPoolCommand::RemoveSlot(s) => {
-                        sub.sink.remove_constraints_for_slot(s)
-                    }
+                    ConstraintPoolCommand::RemoveSlot(s) => sub.sink.remove_constraints_for_slot(s),
                 };
                 if !ok {
                     return false;
@@ -166,7 +164,7 @@ impl ConstraintPool {
     pub fn get_constraints_for_slot(&mut self, slot: u64) -> ConstraintsMessage {
         // Clean up expired constraints (blocks < current block) to prevent memory leaks
         self.cleanup_expired_constraints(slot);
-        
+
         self.constraints_by_slot
             .get(&slot)
             .cloned()

@@ -1,7 +1,7 @@
 // constraint_sink.rs — lean & mirrors order sink
 
-use fabric_constraints::types::ConstraintsMessage;
 use core::fmt::Debug;
+use fabric_constraints::types::ConstraintsMessage;
 use tokio::sync::mpsc;
 use tracing::info;
 

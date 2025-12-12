@@ -1,8 +1,8 @@
 use alloy_consensus::TxEnvelope;
 use tracing::info;
 
-use fabric_inclusion::proofs::TransactionTrieBuilder;
 use fabric_constraints::types::ConstraintProofs;
+use fabric_inclusion::proofs::TransactionTrieBuilder;
 
 /// Prove transaction inclusion for a list of transactions and a list of constraint transaction hashes
 pub fn prove_transaction_inclusion(
