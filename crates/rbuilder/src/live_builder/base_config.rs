@@ -266,6 +266,7 @@ impl BaseConfig {
                 server_ip: self.constraint_server_ip,
                 serve_max_connections: constraint_input::DEFAULT_SERVE_MAX_CONNECTIONS,
                 results_channel_timeout: constraint_input::DEFAULT_RESULTS_CHANNEL_TIMEOUT,
+                genesis_timestamp: self.chain_spec()?.genesis.timestamp,
             },
             blocks_source: slot_source,
             chain_chain_spec: self.chain_spec()?,

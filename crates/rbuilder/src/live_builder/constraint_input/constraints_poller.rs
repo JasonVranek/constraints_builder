@@ -55,6 +55,12 @@ fn constraint_to_individual_bundles(constraints_message: &ConstraintsMessage) ->
     Ok(bundles)
 }
 
+fn get_next_slot(genesis_timestamp: u64) -> u64 {
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).expect("Failed to get current time").as_secs();
+    let slot = (now - genesis_timestamp) / 12;
+    slot + 1
+}
+
 pub async fn run(
     config: ConstraintInputConfig,
     results: mpsc::Sender<ConstraintsMessage>,
@@ -70,7 +76,7 @@ pub async fn run(
     let handle = tokio::spawn(async move {
         loop {
             // Get the next slot
-            let slot = 1; // todo fetch
+            let slot = get_next_slot(config.genesis_timestamp);
 
             // Call the constraints server to get the constraints
             match client.get_constraints(slot).await {

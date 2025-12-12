@@ -26,12 +26,16 @@ pub struct ConstraintInputConfig {
     pub serve_max_connections: u32,
     /// Timeout when sending constraints to processing channel
     pub results_channel_timeout: Duration,
+    /// Genesis timestamp
+    pub genesis_timestamp: u64,
 }
+
 
 /// Default values for constraint input configuration
 pub const DEFAULT_SERVE_MAX_CONNECTIONS: u32 = 4096;
 pub const DEFAULT_RESULTS_CHANNEL_TIMEOUT: Duration = Duration::from_millis(50);
 pub const CONSTRAINT_INPUT_BUFFER: usize = 10_000;
+pub const DEFAULT_GENESIS_TIMESTAMP: u64 = 1606824023; // mainnet
 
 impl Default for ConstraintInputConfig {
     fn default() -> Self {
@@ -42,6 +46,7 @@ impl Default for ConstraintInputConfig {
             server_ip: Ipv4Addr::new(127, 0, 0, 1),
             serve_max_connections: DEFAULT_SERVE_MAX_CONNECTIONS,
             results_channel_timeout: DEFAULT_RESULTS_CHANNEL_TIMEOUT,
+            genesis_timestamp: DEFAULT_GENESIS_TIMESTAMP,
         }
     }
 }
@@ -53,6 +58,7 @@ impl ConstraintInputConfig {
         server_ip: Ipv4Addr,
         serve_max_connections: u32,
         results_channel_timeout: Duration,
+        genesis_timestamp: u64,
     ) -> Self {
         Self {
             enabled,
@@ -60,6 +66,7 @@ impl ConstraintInputConfig {
             server_ip,
             serve_max_connections,
             results_channel_timeout,
+            genesis_timestamp,
         }
     }
 }
