@@ -1,15 +1,15 @@
 // constraint_sink.rs — lean & mirrors order sink
 
-use rbuilder_primitives::constraints::Constraints;
+use fabric_constraints::types::ConstraintsMessage;
 use core::fmt::Debug;
 use tokio::sync::mpsc;
 use tracing::info;
 
-/// Receiver of constraint commands (immutable inserts; removals are by block).
+/// Receiver of constraint commands (immutable inserts; removals are by slot).
 /// Methods return `bool` so the source can drop dead subscribers immediately.
 pub trait ConstraintSink: Debug + Send {
-    fn insert_constraint(&mut self, constraint: Constraints) -> bool;
-    fn remove_constraints_for_block(&mut self, block: u64) -> bool;
+    fn insert_constraint(&mut self, constraints: ConstraintsMessage) -> bool;
+    fn remove_constraints_for_slot(&mut self, slot: u64) -> bool;
     fn is_alive(&self) -> bool;
 }
 
@@ -18,18 +18,18 @@ pub trait ConstraintSink: Debug + Send {
 pub struct ConstraintPrinter;
 
 impl ConstraintSink for ConstraintPrinter {
-    fn insert_constraint(&mut self, constraint: Constraints) -> bool {
+    fn insert_constraint(&mut self, constraints: ConstraintsMessage) -> bool {
         info!(
-            block = constraint.message.block,
-            constraint_count = constraint.message.transactions.len(),
-            "New constraint"
+            slot = ?constraints.slot,
+            count = constraints.constraints.len(),
+            "New constraints"
         );
         true
     }
 
-    // Constraints are removed by block, not by ID (differs from orders).
-    fn remove_constraints_for_block(&mut self, block: u64) -> bool {
-        info!(block, "Removed constraints for block");
+    // Constraints are removed by slot, not by ID (differs from orders).
+    fn remove_constraints_for_slot(&mut self, slot: u64) -> bool {
+        info!(slot, "Removed constraints for slot");
         true
     }
 
@@ -47,8 +47,8 @@ impl Drop for ConstraintPrinter {
 /// Commands for push→pull adaptation (parallels OrderPoolCommand).
 #[derive(Debug, Clone)]
 pub enum ConstraintPoolCommand {
-    Insert(Constraints),
-    RemoveBlock(u64),
+    Insert(ConstraintsMessage),
+    RemoveSlot(u64),
 }
 
 /// Channel-backed adapter implementing `ConstraintSink` (parallels OrderSender2OrderSink).
@@ -66,15 +66,15 @@ impl ConstraintSender2ConstraintSink {
 }
 
 impl ConstraintSink for ConstraintSender2ConstraintSink {
-    fn insert_constraint(&mut self, constraint: Constraints) -> bool {
+    fn insert_constraint(&mut self, constraint: ConstraintsMessage) -> bool {
         self.sender
             .send(ConstraintPoolCommand::Insert(constraint))
             .is_ok()
     }
 
-    fn remove_constraints_for_block(&mut self, block: u64) -> bool {
+    fn remove_constraints_for_slot(&mut self, slot: u64) -> bool {
         self.sender
-            .send(ConstraintPoolCommand::RemoveBlock(block))
+            .send(ConstraintPoolCommand::RemoveSlot(slot))
             .is_ok()
     }
 

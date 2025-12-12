@@ -83,19 +83,12 @@ pub struct BaseConfig {
     pub jsonrpc_server_ip: Ipv4Addr,
     pub jsonrpc_server_max_connections: Option<u32>,
 
-    /// Port for constraint RPC server
-    #[serde(default = "default_constraint_rpc_port")]
-    pub constraint_rpc_port: u16,
-    /// IP for constraint RPC server
+    /// Port for constraints server
+    #[serde(default = "default_constraint_server_port")]
+    pub constraint_server_port: u16,
+    /// IP for constraint server
     #[serde(default = "default_ip")]
-    pub constraint_rpc_ip: Ipv4Addr,
-
-    /// Port for constraint proof RPC server
-    #[serde(default = "default_constraint_proof_rpc_port")]
-    pub constraint_proof_rpc_port: u16,
-    /// IP for constraint proof RPC server
-    #[serde(default = "default_ip")]
-    pub constraint_proof_rpc_ip: Ipv4Addr,
+    pub constraint_server_ip: Ipv4Addr,
 
     pub ignore_cancellable_orders: bool,
     pub ignore_blobs: bool,
@@ -191,12 +184,8 @@ pub fn default_ip() -> Ipv4Addr {
     Ipv4Addr::new(0, 0, 0, 0)
 }
 
-pub fn default_constraint_rpc_port() -> u16 {
-    DEFAULT_CONSTRAINT_RPC_PORT
-}
-
-pub fn default_constraint_proof_rpc_port() -> u16 {
-    DEFAULT_CONSTRAINT_PROOF_RPC_PORT
+pub fn default_constraint_server_port() -> u16 {
+    DEFAULT_CONSTRAINT_SERVER_PORT
 }
 
 impl BaseConfig {
@@ -273,8 +262,8 @@ impl BaseConfig {
             order_input_config,
             constraint_input_config: ConstraintInputConfig {
                 enabled: true,
-                server_port: self.constraint_rpc_port,
-                server_ip: self.constraint_rpc_ip,
+                server_port: self.constraint_server_port,
+                server_ip: self.constraint_server_ip,
                 serve_max_connections: constraint_input::DEFAULT_SERVE_MAX_CONNECTIONS,
                 results_channel_timeout: constraint_input::DEFAULT_RESULTS_CHANNEL_TIMEOUT,
             },
@@ -512,8 +501,7 @@ impl BaseConfig {
 pub const DEFAULT_CL_NODE_URL: &str = "http://127.0.0.1:3500";
 pub const DEFAULT_EL_NODE_IPC_PATH: &str = "/tmp/reth.ipc";
 pub const DEFAULT_INCOMING_BUNDLES_PORT: u16 = 8645;
-pub const DEFAULT_CONSTRAINT_RPC_PORT: u16 = 8547;
-pub const DEFAULT_CONSTRAINT_PROOF_RPC_PORT: u16 = 9548;
+pub const DEFAULT_CONSTRAINT_SERVER_PORT: u16 = 8547;
 pub const DEFAULT_RETH_DB_PATH: &str = "/mnt/data/reth";
 /// This will update every 2.4 hours, super reasonable.
 pub const DEFAULT_BLOCKLIST_URL_MAX_AGE_HOURS: u64 = 24;
@@ -536,10 +524,8 @@ impl Default for BaseConfig {
             jsonrpc_server_port: DEFAULT_INCOMING_BUNDLES_PORT,
             jsonrpc_server_ip: default_ip(),
             jsonrpc_server_max_connections: None,
-            constraint_rpc_port: DEFAULT_CONSTRAINT_RPC_PORT,
-            constraint_rpc_ip: default_ip(),
-            constraint_proof_rpc_port: DEFAULT_CONSTRAINT_PROOF_RPC_PORT,
-            constraint_proof_rpc_ip: default_ip(),
+            constraint_server_port: DEFAULT_CONSTRAINT_SERVER_PORT,
+            constraint_server_ip: default_ip(),
             ignore_cancellable_orders: true,
             ignore_blobs: false,
             chain: "mainnet".to_string(),

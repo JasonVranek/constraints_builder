@@ -4,7 +4,6 @@
 use super::{
     base_config::BaseConfig,
     block_output::{
-        self,
         bidding_service_interface::{
             BidObserver, BiddingService, LandedBlockInfo, NullBidObserver
         },

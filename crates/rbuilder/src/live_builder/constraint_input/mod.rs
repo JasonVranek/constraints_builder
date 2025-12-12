@@ -1,13 +1,13 @@
 //! constraint_input fetches new constraints from a constraint server and manages a constraint pool
 pub mod constraint_sink;
 pub mod constraintpool;
-pub mod rpc_server;
+pub mod constraints_poller;
 
 pub use self::{
     constraint_sink::{ConstraintPoolCommand, ConstraintSink},
     constraintpool::{ConstraintPool, ConstraintPoolSubscriptionId},
 };
-use rbuilder_primitives::constraints::Constraints;
+use fabric_constraints::types::ConstraintsMessage;
 use parking_lot::Mutex;
 use std::{net::Ipv4Addr, sync::Arc, time::Duration};
 use tokio::{sync::mpsc, task::JoinHandle};
@@ -72,10 +72,10 @@ pub struct ConstraintPoolSubscriber {
 impl ConstraintPoolSubscriber {
     pub fn add_sink(
         &self,
-        block: u64,
+        slot: u64,
         sink: Box<dyn ConstraintSink>,
     ) -> ConstraintPoolSubscriptionId {
-        self.constraintpool.lock().add_sink(block, sink)
+        self.constraintpool.lock().add_sink(slot, sink)
     }
 
     pub fn remove_sink(
@@ -85,12 +85,12 @@ impl ConstraintPoolSubscriber {
         self.constraintpool.lock().remove_sink(id)
     }
 
-    pub fn block_updated(&self, current_block: u64) {
-        self.constraintpool.lock().block_updated(current_block);
+    pub fn slot_updated(&self, current_slot: u64) {
+        self.constraintpool.lock().slot_updated(current_slot);
     }
 
-    pub fn get_constraints_for_block(&self, block: u64) -> Vec<Constraints> {
-        self.constraintpool.lock().get_constraints_for_block(block)
+    pub fn get_constraints_for_slot(&self, slot: u64) -> ConstraintsMessage {
+        self.constraintpool.lock().get_constraints_for_slot(slot)
     }
 }
 
@@ -106,15 +106,15 @@ pub async fn start_constraintpool_jobs(
         constraintpool: constraint_pool.clone(),
     };
 
-    // Start RPC server if enabled
-    let _rpc_handle = if config.enabled {
+    // Start constraints poller service
+    let _poller_handle = if config.enabled {
         let (constraint_tx, mut constraint_rx) =
-            mpsc::channel::<Constraints>(CONSTRAINT_INPUT_BUFFER);
+            mpsc::channel::<ConstraintsMessage>(CONSTRAINT_INPUT_BUFFER);
 
-        let rpc_handle =
-            rpc_server::start_constraint_rpc(config, constraint_tx, order_sender, global_cancel.clone()).await?;
+        let poller_handle =
+            constraints_poller::run(config, constraint_tx, order_sender, global_cancel.clone()).await?;
 
-        // Bridge RPC constraints to pool commands
+        // Bridge poller constraints to pool commands
         tokio::spawn({
             let constraint_sender = constraint_sender.clone();
             async move {
@@ -130,9 +130,9 @@ pub async fn start_constraintpool_jobs(
             }
         });
 
-        Some(rpc_handle)
+        Some(poller_handle)
     } else {
-        info!("Constraint RPC disabled");
+        info!("Constraint poller disabled");
         None
     };
 
