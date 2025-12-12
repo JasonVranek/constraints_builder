@@ -1,4 +1,4 @@
-//! constraint_input handles receiving new constraints from RPC calls and  managing constraint pools
+//! constraint_input fetches new constraints from a constraint server and manages a constraint pool
 pub mod constraint_sink;
 pub mod constraintpool;
 pub mod rpc_server;
@@ -35,10 +35,10 @@ pub const CONSTRAINT_INPUT_BUFFER: usize = 10_000;
 
 impl Default for ConstraintInputConfig {
     fn default() -> Self {
-        use crate::live_builder::base_config::DEFAULT_CONSTRAINT_RPC_PORT;
+        use crate::live_builder::base_config::DEFAULT_CONSTRAINT_SERVER_PORT;
         Self {
             enabled: true,
-            server_port: DEFAULT_CONSTRAINT_RPC_PORT,
+            server_port: DEFAULT_CONSTRAINT_SERVER_PORT,
             server_ip: Ipv4Addr::new(127, 0, 0, 1),
             serve_max_connections: DEFAULT_SERVE_MAX_CONNECTIONS,
             results_channel_timeout: DEFAULT_RESULTS_CHANNEL_TIMEOUT,

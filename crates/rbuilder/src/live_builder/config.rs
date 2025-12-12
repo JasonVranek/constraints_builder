@@ -6,7 +6,7 @@ use super::{
     block_output::{
         self,
         bidding_service_interface::{
-            BidObserver, BiddingService, LandedBlockInfo,
+            BidObserver, BiddingService, LandedBlockInfo, NullBidObserver
         },
         relay_submit::{OptimisticConfig, RelaySubmitSinkFactory, SubmissionConfig},
         true_value_bidding_service::NewTrueBlockValueBiddingService,
@@ -522,29 +522,13 @@ impl LiveBuilderConfig for Config {
         let (wallet_balance_watcher, _) =
             create_wallet_balance_watcher(provider.clone(), &self.base_config).await?;
 
-        // Create constraint proof storage and RPC server
-        let proof_storage = block_output::constraint_proof_storage::ConstraintProofStorage::new();
-
-        // Start constraint proof RPC server
-        let proof_rpc_config = block_output::constraint_proof_rpc::ConstraintProofRpcConfig {
-            server_ip: self.base_config.constraint_proof_rpc_ip,
-            server_port: self.base_config.constraint_proof_rpc_port,
-            max_connections: 100,
-        };
-        block_output::constraint_proof_rpc::start_constraint_proof_rpc(
-            proof_rpc_config,
-            proof_storage.clone(),
-            cancellation_token.clone(),
-        )
-        .await?;
-
         let (sink_factory, slot_info_provider, adjustment_fee_payers) =
             create_sink_factory_and_relays(
                 &self.base_config,
                 &self.l1_config,
                 bidding_service.relay_sets(),
                 wallet_balance_watcher,
-                Box::new(block_output::constraint_proof_observer::ConstraintProofObserver::new(proof_storage)),
+                Box::new(NullBidObserver {}),
                 bidding_service,
                 cancellation_token.clone(),
             )
@@ -1214,12 +1198,14 @@ mod test {
             "Env variable: COINBASE_SECRET_KEY not set"
         );
 
-        env::set_var(
+        unsafe {
+            env::set_var(
             "COINBASE_SECRET_KEY",
             "0xb785cd753d62bb25c0afaf75fd40dd94bf295051fdadc972ec857ad6b29cfa72",
         );
 
-        env::set_var("CL_NODE_URL", "http://localhost:3500");
+            env::set_var("CL_NODE_URL", "http://localhost:3500");
+        }
 
         let config: Config = load_toml_config(p).expect("Config load");
 

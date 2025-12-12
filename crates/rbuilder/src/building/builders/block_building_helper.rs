@@ -1,5 +1,8 @@
-use alloy_primitives::{utils::format_ether, Address, TxHash, I256, U256, Bytes, B256};
+use alloy_consensus::{SignableTransaction, TxEnvelope};
+use alloy_primitives::{utils::format_ether, Address, Bytes, TxHash, B256, I256, U256};
+use alloy_rlp::Decodable;
 use ethereum_consensus::ssz::prelude::ByteList;
+use fabric_inclusion::types::InclusionPayload;
 use reth_provider::StateProvider;
 use std::{
     cmp::max,
@@ -20,12 +23,14 @@ use crate::{
         FinalizeRevertStateCurrentIteration, NullPartialBlockExecutionTracer, PartialBlock,
         PartialBlockExecutionTracer, ThreadBlockBuildingContext,
     },
+    live_builder::block_output::constraint_prover::prove_transaction_inclusion,
     telemetry::{self, add_block_fill_time, add_order_simulation_time},
     utils::{check_block_hash_reader_health, elapsed_ms, HistoricalBlockError},
 };
 use rbuilder_primitives::{
-    order_statistics::OrderStatistics, serialize::{RawTx, TxEncoding}, SimValue, SimulatedOrder,
-    TransactionSignedEcRecoveredWithBlobs,
+    order_statistics::OrderStatistics,
+    serialize::{RawTx, TxEncoding},
+    SimValue, SimulatedOrder, TransactionSignedEcRecoveredWithBlobs,
 };
 
 use super::Block;
@@ -376,6 +381,10 @@ impl<
         self.built_block_trace.subsidy = subsidy;
         self.built_block_trace.true_bid_value = true_value;
         self.built_block_trace.mev_blocker_price = self.building_context().mev_blocker_price;
+
+        // Prove block satisfies constraints
+        self.prove_constraints()?;
+
         Ok(())
     }
 
@@ -546,7 +555,9 @@ impl<
         }
 
         // Get hashes of all executed transactions in the block
-        let executed_tx_hashes: HashSet<B256> = self.partial_block.executed_tx_infos
+        let executed_tx_hashes: HashSet<B256> = self
+            .partial_block
+            .executed_tx_infos
             .iter()
             .map(|info| info.tx.hash())
             .collect();
@@ -561,49 +572,55 @@ impl<
         let mut missing_constraint_count = 0;
 
         for (constraint_idx, constraint) in constraints.iter().enumerate() {
-            trace!(
+            // Convert Constraint to InclusionPayload
+            let payload = InclusionPayload::abi_decode(&constraint.payload).map_err(|e| {
+                reth_errors::ProviderError::Database(reth_errors::DatabaseError::Other(format!(
+                    "Failed to decode constraint payload: {e:?}"
+                )))
+            })?;
+
+            let tx = payload.decode_transaction().map_err(|e| {
+                reth_errors::ProviderError::Database(reth_errors::DatabaseError::Other(format!(
+                    "Failed to decode constraint transaction: {e:?}"
+                )))
+            })?;
+
+            let constraint_tx_hash = tx.hash();
+
+            // Check if this constraint transaction is already included
+            if executed_tx_hashes.contains(constraint_tx_hash) {
+                trace!(constraint_idx, tx_hash = ?constraint_tx_hash, "Constraint transaction already included");
+                continue;
+            }
+
+            // Constraint transaction not found, append it
+            missing_constraint_count += 1;
+            debug!(
                 constraint_idx,
-                txs = constraint.message.transactions.len(),
-                "Processing constraint"
+                "Constraint transaction missing, appending"
             );
 
-            for (tx_idx, raw_tx_bytes) in constraint.message.transactions.iter().enumerate() {
-                // Check if this constraint transaction is already included
-                match self.compute_constraint_tx_hash(raw_tx_bytes) {
-                    Ok(expected_tx_hash) => {
-                        if executed_tx_hashes.contains(&expected_tx_hash) {
-                            trace!(constraint_idx, tx_idx, %expected_tx_hash, "Constraint transaction already included");
-                            continue;
-                        }
-                    }
-                    Err(e) => {
-                        debug!(constraint_idx, tx_idx, ?e, "Failed to compute constraint tx hash, will try to execute");
+
+            // Encode the transaction and execute it
+            let raw_tx_bytes = Bytes::from(alloy_rlp::encode(&tx).to_vec());
+            match self.execute_constraint_transaction(raw_tx_bytes, local_ctx) {
+                Ok(true) => {
+                    // Transaction successfully appended, track its hash
+                    if let Some(last_tx) = self.partial_block.executed_tx_infos.last() {
+                        let tx_hash = last_tx.tx.hash();
+                        self.built_block_trace.appended_constraint_txs.push(tx_hash);
+                        debug!(constraint_idx, %tx_hash, "Constraint transaction successfully appended and tracked");
                     }
                 }
-
-                // Transaction not found, append it
-                missing_constraint_count += 1;
-                debug!(constraint_idx, tx_idx, "Constraint transaction missing, appending");
-
-                match self.execute_constraint_transaction(raw_tx_bytes, local_ctx) {
-                    Ok(true) => {
-                        // Transaction successfully appended, track its hash
-                        if let Some(last_tx) = self.partial_block.executed_tx_infos.last() {
-                            let tx_hash = last_tx.tx.hash();
-                            self.built_block_trace.appended_constraint_txs.push(tx_hash);
-                            debug!(constraint_idx, tx_idx, %tx_hash, "Constraint transaction successfully appended and tracked");
-                        }
-                    }
-                    Ok(false) => debug!(constraint_idx, tx_idx, "Constraint transaction failed"),
-                    Err(err) => {
-                        error!(
-                            constraint_idx,
-                            tx_idx,
-                            ?err,
-                            "Critical constraint transaction error"
-                        );
-                        return Err(err);
-                    }
+                Ok(false) => debug!(constraint_idx, tx_hash = ?constraint_tx_hash, "Constraint transaction failed"),
+                Err(err) => {
+                    error!(
+                        constraint_idx,
+                        tx_hash = ?constraint_tx_hash,
+                        ?err,
+                        "Critical constraint transaction error"
+                    );
+                    return Err(err);
                 }
             }
         }
@@ -611,31 +628,60 @@ impl<
         if missing_constraint_count == 0 {
             trace!("All constraint transactions already included by building algorithms");
         } else {
-            debug!(missing_constraint_count, "Appended missing constraint transactions");
+            debug!(
+                missing_constraint_count,
+                "Appended missing constraint transactions"
+            );
         }
 
         Ok(())
     }
 
-    /// Compute the expected transaction hash for a constraint transaction
-    fn compute_constraint_tx_hash(&self, raw_tx_bytes: &ByteList<1073741824>) -> Result<B256, BlockBuildingHelperError> {
-        let tx_bytes = Bytes::from(raw_tx_bytes.as_ref().to_vec());
-        let tx_with_blobs = RawTx { tx: tx_bytes }
-            .decode(TxEncoding::NoBlobData)
-            .map_err(|e| {
-                reth_errors::ProviderError::Database(reth_errors::DatabaseError::Other(format!(
-                    "Failed to decode constraint transaction: {e:?}"
-                )))
-            })?
-            .tx_with_blobs;
+    /// Generate MPT proofs of inclusion for all constraint transactions
+    /// Add the proofs to the built block trace
+    fn prove_constraints(&mut self) -> Result<(), BlockBuildingHelperError> {
+        let constraint_tx_hashes = &self.built_block_trace.appended_constraint_txs;
 
-        Ok(tx_with_blobs.hash())
+        let mut executed_txs = Vec::new();
+
+        // Get all executed transactions in the block
+        for info in self.partial_block.executed_tx_infos.iter() {
+            let tx = info
+                .clone()
+                .tx
+                .into_internal_tx_unsecure()
+                .clone_inner()
+                .into_typed_transaction();
+            let tx_bytes = tx.encoded_for_signing().to_vec();
+
+            executed_txs.push(TxEnvelope::decode(&mut tx_bytes.as_slice()).map_err(|e| {
+                reth_errors::ProviderError::Database(reth_errors::DatabaseError::Other(format!(
+                    "Failed to decode executed transactions: {e:?}"
+                )))
+            })?);
+        }
+
+        let constraint_proofs = prove_transaction_inclusion(
+            &executed_txs,
+            constraint_tx_hashes,
+            self.building_ctx.block(),
+        )
+        .map_err(|e| {
+            reth_errors::ProviderError::Database(reth_errors::DatabaseError::Other(format!(
+                "Failed to prove transaction inclusion: {e:?}"
+            )))
+        })?;
+
+        // Save the proof in the built block trace
+        self.built_block_trace.constraint_proofs = constraint_proofs;
+
+        return Ok(());
     }
 
     /// Execute a single constraint transaction
     fn execute_constraint_transaction(
         &mut self,
-        raw_tx_bytes: &ByteList<1073741824>,
+        raw_tx_bytes: Bytes,
         local_ctx: &mut ThreadBlockBuildingContext,
     ) -> Result<bool, BlockBuildingHelperError> {
         let tx_bytes = Bytes::from(raw_tx_bytes.as_ref().to_vec());
@@ -648,11 +694,7 @@ impl<
             })?
             .tx_with_blobs;
 
-        let mut fork = PartialBlockFork::new(
-            &mut self.block_state,
-            &self.building_ctx,
-            local_ctx,
-        );
+        let mut fork = PartialBlockFork::new(&mut self.block_state, &self.building_ctx, local_ctx);
 
         match fork.commit_tx(&tx_with_blobs, self.partial_block.space_state) {
             Ok(Ok(tx_result)) => {

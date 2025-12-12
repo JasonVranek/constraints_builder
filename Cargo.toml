@@ -208,3 +208,9 @@ rbuilder-utils =  { path = "crates/rbuilder-utils" }
 rbuilder-config = { path = "crates/rbuilder-config" }
 sysperf = { path = "crates/sysperf" }
 metrics_macros = { path = "crates/rbuilder/src/telemetry/metrics_macros" }
+
+
+# fabric-common = { path = "../preconfirmation-gateway/crates/common" }
+fabric-constraints = { path = "../fabric/crates/constraints" }
+fabric-commitments = { path = "../fabric/crates/commitments" }
+fabric-inclusion = { path = "../fabric/crates/inclusion", default-features = false, features = ["types", "proofs"] }

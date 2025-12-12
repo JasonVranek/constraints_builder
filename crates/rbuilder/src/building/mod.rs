@@ -36,10 +36,11 @@ use cached_reads::{LocalCachedReads, SharedCachedReads};
 use derive_more::Deref;
 use eth_sparse_mpt::SparseTrieLocalCache;
 use evm::EthCachedEvmFactory;
+use fabric_constraints::types::Constraint;
 use jsonrpsee::core::Serialize;
 use parking_lot::Mutex;
 use rbuilder_primitives::{
-    mev_boost::BidAdjustmentData, BlockSpace, Constraints, Order, OrderId, SimValue, SimulatedOrder,
+    mev_boost::BidAdjustmentData, BlockSpace, Order, OrderId, SimValue, SimulatedOrder,
     TransactionSignedEcRecoveredWithBlobs,
 };
 use reth::{
@@ -79,7 +80,6 @@ pub mod block_orders;
 pub mod builders;
 pub mod built_block_trace;
 pub mod cached_reads;
-pub mod constraint_proofs;
 #[cfg(test)]
 pub mod conflict;
 pub mod evm;
@@ -127,7 +127,7 @@ pub struct BlockBuildingContext {
     pub mev_blocker_price: U256,
     pub adjustment_fee_payers: ahash::HashSet<Address>,
     /// Constraint transactions that must be appended to blocks
-    pub constraints: Vec<Constraints>,
+    pub constraints: Vec<Constraint>,
     /// Gas available to builder algorithms (reduced by constraint gas limits)
     pub gas_available: u64,
 
@@ -155,7 +155,7 @@ impl BlockBuildingContext {
         faster_finalize: bool,
         mev_blocker_price: U256,
         adjustment_fee_payers: ahash::HashSet<Address>,
-        constraints: Vec<Constraints>,
+        constraints: Vec<Constraint>,
         constraint_reserved_gas: u64,
     ) -> Option<BlockBuildingContext> {
         let attributes = EthPayloadBuilderAttributes::try_new(

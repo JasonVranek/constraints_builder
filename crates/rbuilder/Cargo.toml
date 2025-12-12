@@ -61,9 +61,9 @@ alloy-trie.workspace = true
 ethereum_ssz_derive.workspace = true
 ethereum_ssz.workspace = true
 
-eth_trie.workspace = true
-ethereum-types.workspace = true
-hex.workspace = true
+fabric-constraints.workspace = true
+fabric-commitments.workspace = true
+fabric-inclusion.workspace = true
 
 test_utils = { path = "src/test_utils" }
 metrics_macros = { path = "src/telemetry/metrics_macros" }
