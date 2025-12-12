@@ -3,14 +3,11 @@
 pub mod built_block;
 pub mod evm_inspector;
 pub mod fmt;
-pub mod constraints;
 pub mod mev_boost;
 pub mod order_builder;
 pub mod order_statistics;
 pub mod serialize;
 mod test_data_generator;
-
-pub use constraints::Constraints;
 
 use alloy_consensus::Transaction as _;
 use alloy_eips::{
