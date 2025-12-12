@@ -1,7 +1,6 @@
 use alloy_consensus::{SignableTransaction, TxEnvelope};
 use alloy_primitives::{utils::format_ether, Address, Bytes, TxHash, B256, I256, U256};
 use alloy_rlp::Decodable;
-use ethereum_consensus::ssz::prelude::ByteList;
 use fabric_inclusion::types::InclusionPayload;
 use reth_provider::StateProvider;
 use std::{

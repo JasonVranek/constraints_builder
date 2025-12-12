@@ -31,15 +31,17 @@ use crate::{
     },
 };
 use alloy_consensus::Header;
-use alloy_primitives::{Address, B256, Bytes};
+use alloy_primitives::{Address, B256};
 use block_list_provider::BlockListProvider;
 use block_output::unfinished_block_processing::UnfinishedBuiltBlocksInputFactory;
 use building::BlockBuildingPool;
 use eyre::Context;
+use fabric_constraints::types::Constraint;
+use fabric_inclusion::types::InclusionPayload;
 use jsonrpsee::RpcModule;
 use order_input::ReplaceableOrderPoolCommand;
 use payload_events::{InternalPayloadId, MevBoostSlotDataGenerator};
-use rbuilder_primitives::{serialize::{RawTx, TxEncoding}, MempoolTx, Order, TransactionSignedEcRecoveredWithBlobs, Constraints};
+use rbuilder_primitives::{MempoolTx, Order, TransactionSignedEcRecoveredWithBlobs};
 use reth::transaction_pool::{
     BlobStore, EthPooledTransaction, Pool, TransactionListenerKind, TransactionOrdering,
     TransactionPool, TransactionValidator,
@@ -321,7 +323,7 @@ where
             let constraints = constraintpool_subscriber.get_constraints_for_block(payload.block());
             
             // Calculate gas to reserve for constraints based on their transaction gas limits
-            let constraint_reserved_gas = calculate_constraint_gas_reservation(&constraints);
+            let constraint_reserved_gas = calculate_constraint_gas_reservation(&constraints)?;
 
             let root_hasher =
                 Arc::from(self.provider.root_hasher(payload.parent_block_num_hash())?);
@@ -509,24 +511,20 @@ async fn try_send_to_orderpool<V, T, S>(
 }
 
 /// Calculate gas to reserve for constraints based on their transaction gas limits
-fn calculate_constraint_gas_reservation(constraints: &[Constraints]) -> u64 {
+fn calculate_constraint_gas_reservation(constraints: &[Constraint]) -> eyre::Result<u64> {
     let mut total_gas = 0u64;
     let mut valid_tx_count = 0usize;
     let mut invalid_tx_count = 0usize;
     
     for constraint in constraints {
-        for raw_tx_bytes in constraint.message.transactions.iter() {
-            let tx_bytes = Bytes::from(raw_tx_bytes.as_ref().to_vec());
-            match (RawTx { tx: tx_bytes }).decode(TxEncoding::NoBlobData) {
-                Ok(decoded) => {
-                    let tx_gas = decoded.tx_with_blobs.space_needed().gas;
-                    total_gas += tx_gas;
-                    valid_tx_count += 1;
-                }
-                Err(_) => {
-                    invalid_tx_count += 1;
-                    continue;
-                }
+        let payload = InclusionPayload::abi_decode(&constraint.payload)?;
+        match payload.gas() {
+            Ok(gas) => {
+                total_gas += gas;
+                valid_tx_count += 1;
+            }
+            Err(_) => {
+                invalid_tx_count += 1;
             }
         }
     }
@@ -541,5 +539,5 @@ fn calculate_constraint_gas_reservation(constraints: &[Constraints]) -> u64 {
         );
     }
     
-    total_gas
+    Ok(total_gas)
 }
