@@ -3,9 +3,9 @@ use crate::{
     utils,
 };
 use alloy_primitives::{bytes::Bytes, B256};
-use alloy_rpc_types_beacon::relay::SubmitBlockRequest as AlloySubmitBlockRequest;
 use alloy_rpc_types_beacon::BlsPublicKey;
 use ctor::ctor;
+use fabric_constraints::types::SubmitBlockRequestWithProofs;
 use futures::StreamExt as _;
 use lazy_static::lazy_static;
 use metrics_macros::register_metrics;
@@ -13,7 +13,7 @@ use parking_lot::Mutex;
 use prometheus::{HistogramOpts, HistogramVec, IntCounter};
 use rbuilder_primitives::mev_boost::{verify_signed_relay_request, SignedGetPayloadV3};
 use schnellru::{ByLength, LruMap};
-use ssz::{Decode as _, Encode};
+use ssz::Decode as _;
 use std::{
     collections::HashSet,
     net::SocketAddr,
@@ -64,7 +64,7 @@ pub fn spawn_server(
     address: impl Into<SocketAddr>,
     domain: B256,
     relay_pubkeys: HashSet<BlsPublicKey>,
-    bid_stream: BroadcastStream<Arc<AlloySubmitBlockRequest>>,
+    bid_stream: BroadcastStream<Arc<SubmitBlockRequestWithProofs>>,
 ) -> eyre::Result<()> {
     let blocks = Arc::new(Mutex::new(LruMap::new(ByLength::new(
         OPTIMISTIC_V3_CACHE_SIZE_DEFAULT,
@@ -102,7 +102,7 @@ pub fn spawn_server(
 struct Handler {
     domain: B256,
     relay_pubkeys: HashSet<BlsPublicKey>,
-    blocks: Arc<Mutex<LruMap<B256, Arc<AlloySubmitBlockRequest>>>>,
+    blocks: Arc<Mutex<LruMap<B256, Arc<SubmitBlockRequestWithProofs>>>>,
 }
 
 impl Handler {
@@ -125,9 +125,7 @@ impl Handler {
         content_type: String,
         bytes: Bytes,
     ) -> Result<warp::reply::Response, StatusCode> {
-        let mut is_json = false;
         let request: SignedGetPayloadV3 = if content_type == "application/json" {
-            is_json = true;
             serde_json::from_slice(&bytes).map_err(|error| {
                 error!(target: "relay_server", ?error, "error parsing json request");
                 BAD_REQUESTS_TOTAL.inc();
@@ -178,16 +176,11 @@ impl Handler {
             })?
         };
 
-        let (body, content_ty) = if is_json {
-            let json = serde_json::to_vec(&block).map_err(|error| {
-                error!(target: "relay_server", %relay_pubkey, %block_hash, ?error, "error serializing the block");
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?;
-            (json, "application/json")
-        } else {
-            let ssz = block.as_ssz_bytes();
-            (ssz, "application/octet-stream")
-        };
+        let body =serde_json::to_vec(&block).map_err(|error| {
+            error!(target: "relay_server", %relay_pubkey, %block_hash, ?error, "error serializing the block");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+        let content_ty = "application/json";
 
         debug!(target: "relay_server", %relay_pubkey, %block_hash, "Returning payload for request");
         let mut res = warp::http::Response::new(body.into());
@@ -198,13 +191,13 @@ impl Handler {
 }
 
 async fn maintain_block_cache(
-    mut bid_stream: BroadcastStream<Arc<AlloySubmitBlockRequest>>,
-    blocks: Arc<Mutex<LruMap<B256, Arc<AlloySubmitBlockRequest>>>>,
+    mut bid_stream: BroadcastStream<Arc<SubmitBlockRequestWithProofs>>,
+    blocks: Arc<Mutex<LruMap<B256, Arc<SubmitBlockRequestWithProofs>>>>,
 ) {
     loop {
         match bid_stream.next().await {
             Some(Ok(block)) => {
-                let block_hash = block.bid_trace().block_hash;
+                let block_hash = block.message.bid_trace().block_hash;
                 blocks.lock().insert(block_hash, block);
                 trace!(target: "relay_server", %block_hash, "Block added to the relay server cache")
             }

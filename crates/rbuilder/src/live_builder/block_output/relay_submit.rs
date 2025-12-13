@@ -19,6 +19,7 @@ use ahash::HashMap;
 use alloy_primitives::{utils::format_ether, Address, U256};
 use alloy_rpc_types_beacon::relay::SubmitBlockRequest as AlloySubmitBlockRequest;
 use alloy_rpc_types_engine::ExecutionPayload;
+use fabric_constraints::types::{ConstraintProofs, SubmitBlockRequestWithProofs};
 use futures::FutureExt as _;
 use mockall::automock;
 use parking_lot::Mutex;
@@ -125,7 +126,7 @@ pub struct OptimisticV3Config {
     /// The URL where the relay can call to retrieve the block.
     pub builder_url: Vec<u8>,
     /// Sender for Optimistic V3 blocks.
-    pub block_sender: broadcast::Sender<Arc<AlloySubmitBlockRequest>>,
+    pub block_sender: broadcast::Sender<Arc<SubmitBlockRequestWithProofs>>,
 }
 
 /// Values from [`BuiltBlockTrace`]
@@ -337,6 +338,7 @@ async fn run_submit_to_relays_job(
                 &config.optimistic_v3_config,
                 &submission_span,
                 &cancel,
+                block.trace.constraint_proofs.clone(),
             );
 
             // Notify observer for regular relay submissions
@@ -367,6 +369,7 @@ async fn run_submit_to_relays_job(
                 &config.optimistic_v3_config,
                 &submission_span,
                 &cancel,
+                block.trace.constraint_proofs.clone(),
             );
 
             submission_span.in_scope(|| {
@@ -485,6 +488,7 @@ fn submit_block_to_relays(
     optimistic_v3_config: &Option<OptimisticV3Config>,
     submission_span: &Span,
     cancel: &CancellationToken,
+    constraint_proofs: ConstraintProofs,
 ) {
     for relay in relays {
         // Blocks go only to relays that have a max bid > bid_value (or no max bid).
@@ -533,6 +537,7 @@ fn submit_block_to_relays(
                     .map(|adjustment_data| adjustment_data.clone().into_v1()),
             },
             metadata: bid_metadata.clone(),
+            proofs: constraint_proofs.clone(),
         };
 
         let span =
@@ -572,10 +577,13 @@ async fn submit_bid_to_the_relay(
     };
 
     let request_fut = if let Some((config, request)) = optimistic_v3_request {
+        // Convert the request to a SubmitBlockRequestWithProofs
+        let r = SubmitBlockRequestWithProofs {
+            message: submit_block_request.submission.request.as_ref().clone(),
+            proofs: submit_block_request.proofs.clone(),
+        };
         // Send the block to be saved in cache
-        let _ = config
-            .block_sender
-            .send(submit_block_request.submission.request.clone());
+        let _ = config.block_sender.send(Arc::new(r.clone()));
         relay
             .submit_optimistic_v3(request, registration)
             .left_future()

@@ -9739,6 +9739,7 @@ dependencies = [
  "ethereum_ssz 0.9.1",
  "ethereum_ssz_derive",
  "eyre",
+ "fabric-constraints",
  "governor",
  "integer-encoding",
  "proptest",

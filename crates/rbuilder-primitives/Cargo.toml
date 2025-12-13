@@ -55,6 +55,8 @@ serde.workspace = true
 derive_more.workspace = true
 serde_json.workspace = true
 
+fabric-constraints.workspace = true
+
 [dev-dependencies]
 alloy-primitives = { workspace = true, features = ["arbitrary"] }
 rand.workspace = true

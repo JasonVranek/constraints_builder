@@ -1,6 +1,7 @@
 use super::utils::u256decimal_serde_helper;
 use alloy_primitives::{utils::parse_ether, Address, BlockHash, U256};
 use alloy_rpc_types_beacon::BlsPublicKey;
+use fabric_constraints::types::SubmitBlockRequestWithProofs;
 use flate2::{write::GzEncoder, Compression};
 use governor::{DefaultDirectRateLimiter, Quota, RateLimiter};
 use rbuilder_primitives::mev_boost::{
@@ -689,7 +690,7 @@ impl RelayClient {
 
     /// Mainly takes care of ssz/json raw/gzip
     #[allow(clippy::too_many_arguments)] // supports_block_merging parameter added for block merging support
-    async fn call_relay_submit_block(
+    async fn call_relay_submit_block_with_proofs(
         &self,
         submission_with_metadata: &SubmitBlockRequestWithMetadata,
         registration: &ValidatorSlotData,
@@ -702,12 +703,18 @@ impl RelayClient {
         let SubmitBlockRequestWithMetadata {
             submission,
             metadata,
+            proofs,
         } = submission_with_metadata;
+
+        let submit_block_with_proofs = SubmitBlockRequestWithProofs {
+            message: submission.request.as_ref().clone(),
+            proofs: proofs.clone(),
+        };
 
         let mut headers = HeaderMap::new();
 
         let mut url = self.get_base_submit_block_url(registration, &mut headers)?;
-        url.set_path("/relay/v1/builder/blocks");
+        url.set_path("/constraints/v0/relay/blocks_with_proofs");
         url.query_pairs_mut()
             .append_pair("cancellations", if cancellations { "1" } else { "0" });
         if submission.has_adjustment_data() {
@@ -717,116 +724,122 @@ impl RelayClient {
         let mut builder = self.client.post(url.clone());
         let mut headers = HeaderMap::new();
         // Helper to create submission with merging data
-        let create_merging_submission = || {
-            let (fee_recipient, transaction_count) =
-                extract_submission_metadata(&submission_with_metadata.submission);
-            tracing::debug!(relay = %self.url, "{} transactions available for merging", transaction_count);
-            let merging_data =
-                BlockMergingData::for_all_transactions(fee_recipient, transaction_count);
-            SignedBidSubmissionWithMergingData {
-                submission: submission_with_metadata.submission.clone(),
-                merging_data,
-            }
-        };
+        // let create_merging_submission = || {
+        //     let (fee_recipient, transaction_count) =
+        //         extract_submission_metadata(&submission_with_metadata.submission);
+        //     tracing::debug!(relay = %self.url, "{} transactions available for merging", transaction_count);
+        //     let merging_data =
+        //         BlockMergingData::for_all_transactions(fee_recipient, transaction_count);
+        //     SignedBidSubmissionWithMergingData {
+        //         submission: submission_with_metadata.submission.clone(),
+        //         merging_data,
+        //     }
+        // };
+
+        // avoid ssz and block merging for now
+        let body_data = serde_json::to_vec(&submit_block_with_proofs)
+            .map_err(|e| SubmitBlockErr::RPCSerializationError(e.to_string()))?;
+        let content_type = JSON_CONTENT_TYPE;
 
         // SSZ vs JSON
         // Force JSON for block merging submissions to avoid SSZ enum encoding issues
-        let (mut body_data, content_type) = if ssz && !supports_block_merging {
-            // Only use SSZ when not doing block merging
-            (submission.as_ssz_bytes(), SSZ_CONTENT_TYPE)
-        } else {
-            // Log when SSZ is requested but we're using JSON due to block merging
-            if ssz && supports_block_merging {
-                tracing::debug!(relay = %self.url, "SSZ not supported for merging, submitting as JSON instead");
-            }
-            let json_result = if fake_relay {
-                // For the fake relay we remove the blobs
-                serde_json::to_vec(&SubmitBlockRequestNoBlobs(submission))
-            } else if supports_block_merging {
-                // For merging relay, wrap submission with merging data as JSON
-                tracing::debug!(relay = %self.url, "mergeable block submitted as json");
-                let submission_with_merging = create_merging_submission();
-                serde_json::to_vec(&submission_with_merging)
-            } else {
-                serde_json::to_vec(submission)
-            };
+        // let (mut body_data, content_type) = if ssz && !supports_block_merging {
+        //     // Only use SSZ when not doing block merging
+        //     (submission.as_ssz_bytes(), SSZ_CONTENT_TYPE)
+        // } else {
+        //     // Log when SSZ is requested but we're using JSON due to block merging
+        //     if ssz && supports_block_merging {
+        //         tracing::debug!(relay = %self.url, "SSZ not supported for merging, submitting as JSON instead");
+        //     }
+        //     let json_result = if fake_relay {
+        //         // For the fake relay we remove the blobs
+        //         serde_json::to_vec(&SubmitBlockRequestNoBlobs(submission))
+        //     } else if supports_block_merging {
+        //         // For merging relay, wrap submission with merging data as JSON
+        //         tracing::debug!(relay = %self.url, "mergeable block submitted as json");
+        //         let submission_with_merging = create_merging_submission();
+        //         serde_json::to_vec(&submission_with_merging)
+        //     } else {
+        //         serde_json::to_vec(submission)
+        //     };
 
-            (
-                json_result.map_err(|e| SubmitBlockErr::RPCSerializationError(e.to_string()))?,
-                JSON_CONTENT_TYPE,
-            )
-        };
+        //     (
+        //         json_result.map_err(|e| SubmitBlockErr::RPCSerializationError(e.to_string()))?,
+        //         JSON_CONTENT_TYPE,
+        //     )
+        // };
+
         headers.insert(CONTENT_TYPE, HeaderValue::from_static(content_type));
 
         // Add x-mergeable header for merging relays to indicate block merging support
-        if supports_block_merging {
-            headers.insert("x-mergeable", HeaderValue::from_static("true"));
-        }
+        // if supports_block_merging {
+        //     headers.insert("x-mergeable", HeaderValue::from_static("true"));
+        // }
 
         self.add_auth_headers(&mut headers)
             .map_err(|_| SubmitBlockErr::InvalidHeader)?;
 
         // GZIP
-        if gzip {
-            headers.insert(
-                CONTENT_ENCODING,
-                HeaderValue::from_static(GZIP_CONTENT_ENCODING),
-            );
-            let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
-            encoder
-                .write_all(&body_data)
-                .map_err(|e| SubmitBlockErr::RPCSerializationError(e.to_string()))?;
-            body_data = encoder
-                .finish()
-                .map_err(|e| SubmitBlockErr::RPCSerializationError(e.to_string()))?;
-        }
+        // if gzip {
+        //     headers.insert(
+        //         CONTENT_ENCODING,
+        //         HeaderValue::from_static(GZIP_CONTENT_ENCODING),
+        //     );
+        //     let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+        //     encoder
+        //         .write_all(&body_data)
+        //         .map_err(|e| SubmitBlockErr::RPCSerializationError(e.to_string()))?;
+        //     body_data = encoder
+        //         .finish()
+        //         .map_err(|e| SubmitBlockErr::RPCSerializationError(e.to_string()))?;
+        // }
 
         // Set bloxroute specific headers.
-        if self.is_bloxroute {
-            headers.insert(
-                BLOXROUTE_BUILDER_VALUE_HEADER,
-                metadata
-                    .value
-                    .coinbase_reward
-                    .to_string()
-                    .parse()
-                    .map_err(|_| RelayError::InvalidHeader)?,
-            );
-        }
+        // if self.is_bloxroute {
+        //     headers.insert(
+        //         BLOXROUTE_BUILDER_VALUE_HEADER,
+        //         metadata
+        //             .value
+        //             .coinbase_reward
+        //             .to_string()
+        //             .parse()
+        //             .map_err(|_| RelayError::InvalidHeader)?,
+        //     );
+        // }
 
         builder = builder.headers(headers).body(Body::from(body_data));
-        if fake_relay {
-            builder = builder.header(
-                TOTAL_PAYMENT_HEADER,
-                metadata.value.coinbase_reward.to_string(),
-            );
-            if let Some(top_competitor_bid) = metadata.value.top_competitor_bid {
-                builder = builder.header(TOP_BID_HEADER, top_competitor_bid.to_string());
-            }
+        // if fake_relay {
+        //     builder = builder.header(
+        //         TOTAL_PAYMENT_HEADER,
+        //         metadata.value.coinbase_reward.to_string(),
+        //     );
+        //     if let Some(top_competitor_bid) = metadata.value.top_competitor_bid {
+        //         builder = builder.header(TOP_BID_HEADER, top_competitor_bid.to_string());
+        //     }
 
-            const MAX_BUNDLE_HASHES: usize = 150;
-            if !metadata.bundle_hashes.is_empty() {
-                let bundle_hashes: Vec<_> = metadata
-                    .bundle_hashes
-                    .iter()
-                    .take(MAX_BUNDLE_HASHES)
-                    .map(|h| format!("{h:?}"))
-                    .collect();
+        //     const MAX_BUNDLE_HASHES: usize = 150;
+        //     if !metadata.bundle_hashes.is_empty() {
+        //         let bundle_hashes: Vec<_> = metadata
+        //             .bundle_hashes
+        //             .iter()
+        //             .take(MAX_BUNDLE_HASHES)
+        //             .map(|h| format!("{h:?}"))
+        //             .collect();
 
-                let bundle_hashes = if bundle_hashes.len() > MAX_BUNDLE_HASHES {
-                    bundle_hashes.join(",") + ",CAPPED"
-                } else {
-                    bundle_hashes.join(",")
-                };
-                builder = builder.header(BUNDLE_HASHES_HEADER, bundle_hashes);
-            }
+        //         let bundle_hashes = if bundle_hashes.len() > MAX_BUNDLE_HASHES {
+        //             bundle_hashes.join(",") + ",CAPPED"
+        //         } else {
+        //             bundle_hashes.join(",")
+        //         };
+        //         builder = builder.header(BUNDLE_HASHES_HEADER, bundle_hashes);
+        //     }
 
-            let sent_at = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs_f64();
-            builder = builder.header("X-BuilderNet-SentAt", sent_at.to_string());
-        }
+        //     let sent_at = std::time::SystemTime::now()
+        //         .duration_since(std::time::UNIX_EPOCH)
+        //         .unwrap_or_default()
+        //         .as_secs_f64();
+        //     builder = builder.header("X-BuilderNet-SentAt", sent_at.to_string());
+        // }
 
         let response = builder
             .send()
@@ -901,33 +914,8 @@ impl RelayClient {
         cancellations: bool,
         supports_block_merging: bool,
     ) -> Result<(), SubmitBlockErr> {
-        // If gRPC client is available, attempt to submit with it.
-        // TODO: support submitting to rproxy gRPC
-        if let Some(client) = &self.grpc_client {
-            match self.call_bloxroute_grpc_submit_block(client, data).await {
-                Ok(response) => {
-                    let status = response.code.try_into().unwrap_or(u16::MAX);
-                    return if status == tonic::Code::Ok as u16 {
-                        Ok(())
-                    } else {
-                        Err(map_relay_error_message(&response.message, None))
-                    };
-                }
-                Err(SubmitBlockErr::Grpc(error)) => {
-                    if matches!(error.code(), tonic::Code::Unknown) {
-                        // Request succeeded, but relay returned an error.
-                        return Err(map_relay_error_message(error.message(), None));
-                    }
-
-                    // We encountered connection error, possibly due to broken gRPC connection. Proceed to re-submit the block through HTTP.
-                    tracing::error!(?error, "Error submitting to gRPC");
-                }
-                Err(error) => return Err(error),
-            };
-        }
-
         let response = self
-            .call_relay_submit_block(
+            .call_relay_submit_block_with_proofs(
                 data,
                 registration,
                 ssz,
@@ -1104,6 +1092,7 @@ mod tests {
 
     use alloy_primitives::Bytes;
     use alloy_rpc_types_beacon::BlsPublicKey;
+    use fabric_constraints::types::ConstraintProofs;
     use rbuilder_primitives::mev_boost::{
         BidMetadata, BidValueMetadata, SubmitBlockRequest, ValidatorRegistration,
         ValidatorRegistrationMessage,
@@ -1129,9 +1118,11 @@ mod tests {
         mode = 'slot_info'
         ";
 
-        std::env::set_var("XXX", "AAA");
-        std::env::set_var("YYY", "BBB");
-        std::env::set_var("ZZZ", "CCC");
+        unsafe {
+            std::env::set_var("XXX", "AAA");
+            std::env::set_var("YYY", "BBB");
+            std::env::set_var("ZZZ", "CCC");
+        }
 
         let config: RelayConfig = toml::from_str(example).unwrap();
         assert_eq!(config.name, "relay1");
@@ -1324,6 +1315,7 @@ mod tests {
                 order_ids: vec![],
                 bundle_hashes: vec![],
             },
+            proofs: ConstraintProofs::default(),
         };
         let registration = ValidatorSlotData {
             slot: 123,

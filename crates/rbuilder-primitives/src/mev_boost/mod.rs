@@ -1,6 +1,7 @@
 use crate::OrderId;
 use alloy_primitives::{Address, Bytes, B256, U256};
 use alloy_rpc_types_beacon::BlsPublicKey;
+use fabric_constraints::types::ConstraintProofs;
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DisplayFromStr};
@@ -215,4 +216,5 @@ pub struct BidValueMetadata {
 pub struct SubmitBlockRequestWithMetadata {
     pub submission: SubmitBlockRequest,
     pub metadata: BidMetadata,
+    pub proofs: ConstraintProofs,
 }
