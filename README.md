@@ -6,16 +6,15 @@ A fork of [flashbots/rbuilder](https://github.com/flashbots/rbuilder) adding con
 
 This branch extends rbuilder with:
 
-- **Constraints** — Accept preconfirmation constraints via RPC and include them in blocks
-- **Merkle Proofs** — Generate inclusion proofs for constraint transactions
+- **Constraints** — Ingest `SignedConstraints` by polling the relay's `GET /constraints` endpoint. During block finalization, transactions are inserted based on the constraints, then Merkle inclusion proofs are generated for each. A modified `POST /blocks_with_proofs` is called to submit the block and merkle proofs to the relay. 
 - **Block Merging** — Submit blocks with merging metadata to compatible relays
 
 ## Constraints
 
-Constraints are transactions that must be included in a block:
+This implementation assumes a `Constraint` wraps an `InclusionPayload` that requires a specific transaction to be included in a specific slot:
 
-1. Received via JSON-RPC on `constraint_rpc_port` (default: `8547`)
-2. Stored in a constraint pool indexed by target block number
+1. Received via `constraints_poller`
+2. Stored in a constraint pool indexed by target slot number
 3. Appended to blocks during building
 4. Tracked in `BuiltBlockTrace.appended_constraint_txs`
 
@@ -27,8 +26,6 @@ After block submission, merkle proofs are generated for each constraint transact
 |-----------|-------------|
 | **Trie** | Ethereum MPT with RLP-encoded tx index as key, RLP-encoded signed tx as value |
 | **Proof** | Path from transaction leaf to transactions root |
-| **Storage** | In-memory, retains last 10 slots |
-| **RPC** | `getConstraintProofs` on `constraint_proof_rpc_port` (default: `9548`) |
 
 Based on [merklefruit/trie-proofs](https://github.com/merklefruit/trie-proofs).
 
@@ -63,14 +60,12 @@ When `supports_block_merging = true`:
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `constraint_rpc_port` | `8547` | Port for receiving constraints |
-| `constraint_rpc_ip` | `0.0.0.0` | IP for constraint RPC server |
-| `constraint_proof_rpc_port` | `9548` | Port for serving proofs |
-| `constraint_proof_rpc_ip` | `0.0.0.0` | IP for proof RPC server |
+| `constraints_server_port` | `8547` | Port for querying constraints |
+| `constraint_server_ip` | `0.0.0.0` | IP for constraint server |
 
 ## TODO
 
-- [ ] **SignedCommitment verification** — Receive `SignedCommitment` objects from the relay and verify signatures before adding constraints to the pool
+- [ ] **SignedConstraint verification** — Receive `SignedConstraint` objects from the relay and verify signatures before adding constraints to the pool
 
 ## License
 
@@ -80,3 +75,4 @@ Licensed under Apache 2.0 or MIT, consistent with upstream rbuilder.
 
 - [flashbots/rbuilder](https://github.com/flashbots/rbuilder) — upstream block builder
 - [merklefruit/trie-proofs](https://github.com/merklefruit/trie-proofs) — merkle proof implementation reference
+- [fabric](https://github.com/eth-fabric/fabric) - types and helpers to work with constraints
