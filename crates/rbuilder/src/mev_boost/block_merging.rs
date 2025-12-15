@@ -1,4 +1,5 @@
 use alloy_primitives::Address;
+use fabric_constraints::types::SubmitBlockRequestWithProofs;
 use serde::{Deserialize, Serialize};
 use ssz_derive::{Decode, Encode};
 
@@ -7,7 +8,7 @@ use rbuilder_primitives::mev_boost::SubmitBlockRequest;
 /// Simple JSON/SSZ wrapper for helix block merging
 #[derive(Debug, Clone, Serialize, Deserialize, Encode, Decode)]
 pub struct SignedBidSubmissionWithMergingData {
-    pub submission: SubmitBlockRequest,
+    pub submission: SubmitBlockRequestWithProofs,
     pub merging_data: BlockMergingData,
 }
 

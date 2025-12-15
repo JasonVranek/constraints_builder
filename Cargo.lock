@@ -4290,6 +4290,8 @@ dependencies = [
  "alloy",
  "async-trait",
  "axum",
+ "ethereum_ssz 0.9.1",
+ "ethereum_ssz_derive",
  "eyre",
  "fabric-common",
  "lazy_static",
