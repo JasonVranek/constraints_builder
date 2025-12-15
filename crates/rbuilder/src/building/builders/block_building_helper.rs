@@ -597,8 +597,7 @@ impl<
             debug!(constraint_idx, "Constraint transaction missing, appending");
 
             // Encode the transaction and execute it
-            let raw_tx_bytes = Bytes::from(alloy_rlp::encode(&tx).to_vec());
-            match self.execute_constraint_transaction(raw_tx_bytes, local_ctx) {
+            match self.execute_constraint_transaction(payload.signed_tx, local_ctx) {
                 Ok(true) => {
                     // Transaction successfully appended, track its hash
                     if let Some(last_tx) = self.partial_block.executed_tx_infos.last() {

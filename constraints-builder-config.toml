@@ -1,0 +1,75 @@
+log_json = true
+log_level = "info,rbuilder=debug"
+redacted_telemetry_server_port = 6061
+redacted_telemetry_server_ip = "0.0.0.0"
+full_telemetry_server_port = 6060
+full_telemetry_server_ip = "0.0.0.0"
+
+chain = "hoodi"
+reth_datadir = "../../reth/data/reth"
+
+coinbase_secret_key = "ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+relay_secret_key = "5eae315483f028b5cdd5d1090ff0c7618b18737ea9bf3c35047189db22835c48"
+optimistic_relay_secret_key = "5eae315483f028b5cdd5d1090ff0c7618b18737ea9bf3c35047189db22835c48"
+
+# cl_node_url can be a single value, array of values, or passed by an environment variables with values separated with a comma
+# cl_node_url = "http://localhost:3500"
+cl_node_url = "http://127.0.0.1:8551"
+jsonrpc_server_port = 8645
+jsonrpc_server_ip = "0.0.0.0"
+el_node_ipc_path = "/tmp/reth.ipc"
+extra_data = "constraints test"
+
+blocklist_file_path = "crates/rbuilder/src/integration/test_data/blocklist.json"
+
+ignore_cancellable_orders = true
+
+# watchdog_timeout_sec = 600
+# simulation_threads = 4
+
+# genesis_fork_version = "0x00112233"
+
+sbundle_mergeable_signers = []
+live_builders = ["mp-ordering", "mgp-ordering", "parallel"]
+
+enabled_relays = ["test-relay"]
+
+subsidy = "0.01"
+
+root_hash_use_sparse_trie=true
+root_hash_compare_sparse_trie=false
+
+# For constraints
+constraint_server_port = 9998
+constraint_server_ip = "127.0.0.1"
+
+# This can be used with test-relay
+[[relays]]
+name = "test-relay"
+url = "http://localhost:9999"
+mode = "full"
+max_bid_eth = "0.05"
+
+
+[[builders]]
+name = "mgp-ordering"
+algo = "ordering-builder"
+discard_txs = true
+sorting = "mev-gas-price"
+failed_order_retries = 1
+drop_failed_orders = true
+
+[[builders]]
+name = "mp-ordering"
+algo = "ordering-builder"
+discard_txs = true
+sorting = "max-profit"
+failed_order_retries = 1
+drop_failed_orders = true
+
+[[builders]]
+name = "parallel"
+algo = "parallel-builder"
+discard_txs = true
+num_threads = 25
+safe_sorting_only = false

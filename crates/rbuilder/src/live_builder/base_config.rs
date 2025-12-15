@@ -255,6 +255,9 @@ impl BaseConfig {
 
         let (constraint_sender, constraint_receiver) =
             mpsc::channel(constraint_input::CONSTRAINT_INPUT_BUFFER);
+
+        dbg!(&self.chain_spec()?.chain.id());
+        dbg!(&self.chain_spec()?.genesis.timestamp);
         Ok(LiveBuilder::<P> {
             watchdog_timeout: self.watchdog_timeout(),
             error_storage_path: self.error_storage_path.clone(),
@@ -266,7 +269,8 @@ impl BaseConfig {
                 server_ip: self.constraint_server_ip,
                 serve_max_connections: constraint_input::DEFAULT_SERVE_MAX_CONNECTIONS,
                 results_channel_timeout: constraint_input::DEFAULT_RESULTS_CHANNEL_TIMEOUT,
-                genesis_timestamp: self.chain_spec()?.genesis.timestamp,
+                // genesis_timestamp: self.chain_spec()?.genesis.timestamp,
+                genesis_timestamp: 1742213400, // Currently the reth hoodi spec reports 1742212800 as the genesis timestamp which is incorrect
             },
             blocks_source: slot_source,
             chain_chain_spec: self.chain_spec()?,

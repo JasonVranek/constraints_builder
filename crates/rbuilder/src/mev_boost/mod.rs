@@ -741,12 +741,15 @@ impl RelayClient {
             // For merging relay, wrap submission with merging data as JSON
             tracing::debug!(relay = %self.url, "mergeable block submitted as json");
             let submission_with_merging = create_merging_submission();
-            serde_json::to_vec(&submission_with_merging).map_err(|e| SubmitBlockErr::RPCSerializationError(e.to_string()))?
+            serde_json::to_vec(&submission_with_merging)
+                .map_err(|e| SubmitBlockErr::RPCSerializationError(e.to_string()))?
         } else if fake_relay {
             // For the fake relay we remove the blobs
-            serde_json::to_vec(&SubmitBlockRequestNoBlobs(submission)).map_err(|e| SubmitBlockErr::RPCSerializationError(e.to_string()))?
+            serde_json::to_vec(&SubmitBlockRequestNoBlobs(submission))
+                .map_err(|e| SubmitBlockErr::RPCSerializationError(e.to_string()))?
         } else {
-                serde_json::to_vec(&submit_block_with_proofs).map_err(|e| SubmitBlockErr::RPCSerializationError(e.to_string()))?
+            serde_json::to_vec(&submit_block_with_proofs)
+                .map_err(|e| SubmitBlockErr::RPCSerializationError(e.to_string()))?
         };
 
         headers.insert(CONTENT_TYPE, HeaderValue::from_static(content_type));
@@ -758,7 +761,6 @@ impl RelayClient {
 
         self.add_auth_headers(&mut headers)
             .map_err(|_| SubmitBlockErr::InvalidHeader)?;
-
 
         self.add_auth_headers(&mut headers)
             .map_err(|_| SubmitBlockErr::InvalidHeader)?;

@@ -1,8 +1,9 @@
+use std::time::Duration;
+
 use super::ConstraintInputConfig;
 use crate::{
     live_builder::order_input::ReplaceableOrderPoolCommand, telemetry::inc_order_input_rpc_errors,
 };
-use alloy_primitives::Bytes;
 use eyre::Context;
 use fabric_constraints::{
     client::{ConstraintsClient, HttpConstraintsClient},
@@ -27,11 +28,13 @@ fn constraint_to_individual_bundles(
     for constraint in constraints_message.constraints.iter() {
         let payload = InclusionPayload::abi_decode(&constraint.payload)?;
         let tx = payload.decode_transaction()?;
-        let tx_bytes = Bytes::from(alloy_rlp::encode(&tx).to_vec());
-        let tx_with_blobs = RawTx { tx: tx_bytes }
-            .decode(TxEncoding::NoBlobData)
-            .context("Failed to decode constraint transaction")?
-            .tx_with_blobs;
+
+        let tx_with_blobs = RawTx {
+            tx: payload.signed_tx,
+        }
+        .decode(TxEncoding::NoBlobData)
+        .context("Failed to decode constraint transaction")?
+        .tx_with_blobs;
 
         let bundle = Bundle {
             version: BundleVersion::V2,
@@ -130,7 +133,9 @@ pub async fn run(
                             }
                         }
                     } else {
-                        warn!("No constraints found for slot");
+                        warn!("No constraints found for slot: {}", slot);
+                        // Backoff before retrying
+                        tokio::time::sleep(Duration::from_millis(100)).await;
                         continue;
                     }
                 }
@@ -148,4 +153,42 @@ pub async fn run(
             info!("Constraint poller: finished");
         }
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alloy_primitives::hex;
+    use alloy_primitives::Bytes;
+    use fabric_constraints::{client::HttpConstraintsClient, types::Constraint};
+
+    #[tokio::test]
+    async fn test_parse_constraints() {
+        // let client = HttpConstraintsClient::new("127.0.0.1".to_string(), 9998, None);
+        // let genesis_timestamp = 1742213400;
+        // let slot = get_next_slot(genesis_timestamp);
+        // let constraints = client.get_constraints(slot).await.unwrap();
+        // let constraints_message = constraints.first().unwrap().message.clone();
+        // dbg!("Constraints message: {:?}", &constraints_message);
+        // let constraint = constraints_message.constraints.first().unwrap();
+        let constraint = Constraint {
+            constraint_type: 1,
+            payload: Bytes::from(hex::decode("000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000001e0a300000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000007502f87283088bb08084773594008504a817c80082520894ae545edffb08439e8c75061e66543d4ecf9687078405f5e10080c001a0e0695945bb7e481cb5cb3ba51289214d677aa520a3ee937ea56224d1f2f2960ca008c13eb8d1850356d50649eb8899a4638e2b1657981225388932438263f458a40000000000000000000000").unwrap()),
+        };
+
+        dbg!("Constraint: {:?}", &constraint);
+
+        let payload = InclusionPayload::abi_decode(&constraint.payload)
+            .expect("Failed to decode constraint payload");
+        // let tx = payload.decode_transaction().expect("Failed to decode constraint transaction");
+        // tx.into_signed().
+        // let tx_bytes = Bytes::from(alloy_rlp::encode(&tx).to_vec());
+
+        let tx_with_blobs = RawTx {
+            tx: payload.signed_tx,
+        }
+        .decode(TxEncoding::NoBlobData)
+        .expect("Failed to decode constraint transaction")
+        .tx_with_blobs;
+    }
 }
