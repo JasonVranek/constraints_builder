@@ -13,14 +13,13 @@ relay_secret_key = "5eae315483f028b5cdd5d1090ff0c7618b18737ea9bf3c35047189db2283
 optimistic_relay_secret_key = "5eae315483f028b5cdd5d1090ff0c7618b18737ea9bf3c35047189db22835c48"
 
 # cl_node_url can be a single value, array of values, or passed by an environment variables with values separated with a comma
-# cl_node_url = "http://localhost:3500"
-cl_node_url = "http://127.0.0.1:8551"
+cl_node_url = "http://localhost:5052"
 jsonrpc_server_port = 8645
 jsonrpc_server_ip = "0.0.0.0"
 el_node_ipc_path = "/tmp/reth.ipc"
 extra_data = "constraints test"
 
-blocklist_file_path = "crates/rbuilder/src/integration/test_data/blocklist.json"
+blocklist = "./crates/rbuilder/src/integration/test_data/blocklist.json"
 
 ignore_cancellable_orders = true
 
@@ -28,6 +27,8 @@ ignore_cancellable_orders = true
 # simulation_threads = 4
 
 # genesis_fork_version = "0x00112233"
+
+slot_delta_to_start_bidding_ms = -11000
 
 sbundle_mergeable_signers = []
 live_builders = ["mp-ordering", "mgp-ordering", "parallel"]
@@ -39,17 +40,18 @@ subsidy = "0.01"
 root_hash_use_sparse_trie=true
 root_hash_compare_sparse_trie=false
 
-# For constraints
+# For constraints client
 constraint_server_port = 9998
 constraint_server_ip = "127.0.0.1"
 
-# This can be used with test-relay
 [[relays]]
 name = "test-relay"
-url = "http://localhost:9999"
+# Same as constraints server port since it proxies
+# Note the test-relay must set it's own port
+# and the constraints server will forward requests
+url = "http://localhost:9998"
 mode = "full"
 max_bid_eth = "0.05"
-
 
 [[builders]]
 name = "mgp-ordering"
