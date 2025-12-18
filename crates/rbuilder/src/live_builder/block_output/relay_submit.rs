@@ -20,6 +20,7 @@ use alloy_primitives::{utils::format_ether, Address, U256};
 use alloy_rpc_types_beacon::relay::SubmitBlockRequest as AlloySubmitBlockRequest;
 use alloy_rpc_types_engine::ExecutionPayload;
 use fabric_constraints::types::{ConstraintProofs, SubmitBlockRequestWithProofs};
+use fabric_inclusion::proofs::prove_constraints;
 use futures::FutureExt as _;
 use mockall::automock;
 use parking_lot::Mutex;
@@ -39,7 +40,7 @@ use tokio::{
     time::Instant,
 };
 use tokio_util::sync::CancellationToken;
-use tracing::{error, info, info_span, trace, warn, Instrument, Span};
+use tracing::{debug, error, info, info_span, trace, warn, Instrument, Span};
 
 use super::bidding_service_interface::BidObserver;
 
@@ -326,6 +327,25 @@ async fn run_submit_to_relays_job(
             continue 'submit;
         }
 
+        // Generate the constraint proofs for the block
+        let constraints_proofs = match &regular_request {
+            Some(request) => {
+                debug!(parent: &submission_span, constraint_count = block.trace.appended_constraint_txs.len(), "proving constraints for regular request");
+                let constraint_proofs = match prove_constraints(
+                    &request.as_ref(),
+                    &block.trace.appended_constraint_txs,
+                ) {
+                    Ok(proofs) => proofs,
+                    Err(e) => {
+                        error!(parent: &submission_span, ?e, "Error proving constraints");
+                        continue 'submit;
+                    }
+                };
+                constraint_proofs
+            }
+            None => continue 'submit,
+        };
+
         mark_submission_start_time(block.trace.orders_sealed_at);
         if let Some(request) = &regular_request {
             submit_block_to_relays(
@@ -338,7 +358,7 @@ async fn run_submit_to_relays_job(
                 &config.optimistic_v3_config,
                 &submission_span,
                 &cancel,
-                block.trace.constraint_proofs.clone(),
+                constraints_proofs.clone(),
             );
 
             // Notify observer for regular relay submissions
@@ -369,7 +389,7 @@ async fn run_submit_to_relays_job(
                 &config.optimistic_v3_config,
                 &submission_span,
                 &cancel,
-                block.trace.constraint_proofs.clone(),
+                constraints_proofs,
             );
 
             submission_span.in_scope(|| {
@@ -490,6 +510,11 @@ fn submit_block_to_relays(
     cancel: &CancellationToken,
     constraint_proofs: ConstraintProofs,
 ) {
+    info!(
+        parent: submission_span,
+        relays = ?relays.iter().map(|r| r.id()).collect::<Vec<_>>(),
+        "submit_block_to_relays"
+    );
     for relay in relays {
         // Blocks go only to relays that have a max bid > bid_value (or no max bid).
         let bid_value = request.bid_trace().value;

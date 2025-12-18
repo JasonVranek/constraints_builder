@@ -63,8 +63,6 @@ pub struct BuiltBlockTrace {
     pub filtered_build_failed_orders_statistics: OrderStatistics,
     /// Transaction hashes of constraint transactions that were appended during block building
     pub appended_constraint_txs: Vec<TxHash>,
-    /// Constraint proofs for the block
-    pub constraint_proofs: ConstraintProofs,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -108,7 +106,6 @@ impl BuiltBlockTrace {
             subsidy: I256::ZERO,
             multi_bid_copy_duration: Duration::ZERO,
             appended_constraint_txs: Vec::new(),
-            constraint_proofs: ConstraintProofs::default(),
         }
     }
 

@@ -50,9 +50,20 @@ pub struct NewTrueBlockValueSlotBidder {
 
 impl SlotBidder for NewTrueBlockValueSlotBidder {
     fn notify_new_built_block(&self, block_descriptor: BuiltBlockDescriptorForSlotBidder) {
-        if time::OffsetDateTime::now_utc() < self.bid_start_time {
+        let now = time::OffsetDateTime::now_utc();
+        if now < self.bid_start_time {
+            tracing::debug!(
+                block_id = block_descriptor.id.0,
+                ?now,
+                bid_start_time = ?self.bid_start_time,
+                "notify_new_built_block: skipping - before bid_start_time"
+            );
             return;
         }
+        tracing::debug!(
+            block_id = block_descriptor.id.0,
+            "notify_new_built_block: calling seal_bid"
+        );
         self.block_seal_handle.seal_bid(SlotBidderSealBidCommand {
             block_id: block_descriptor.id,
             seen_competition_bid: None,

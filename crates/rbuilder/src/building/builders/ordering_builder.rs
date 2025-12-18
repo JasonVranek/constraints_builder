@@ -146,11 +146,23 @@ pub fn run_ordering_builder<P, OrderPriorityType>(
             input.built_block_id_source.get_new_id(),
             input.cancel.clone(),
         ) {
-            Ok(block) => {
-                if let Ok(block) = BiddableUnfinishedBlock::new(block) {
+            Ok(block) => match BiddableUnfinishedBlock::new(block) {
+                Ok(block) => {
+                    tracing::debug!(
+                        block_id = block.id().0,
+                        builder_name = builder.builder_name.as_str(),
+                        "Ordering builder: submitting block to sink"
+                    );
                     input.sink.new_block(block);
                 }
-            }
+                Err(err) => {
+                    tracing::debug!(
+                        ?err,
+                        builder_name = builder.builder_name.as_str(),
+                        "Ordering builder: BiddableUnfinishedBlock::new failed"
+                    );
+                }
+            },
             Err(err) => {
                 if !handle_building_error(err, payload_id) {
                     break 'building;

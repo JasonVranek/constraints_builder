@@ -259,12 +259,14 @@ impl MevBoostSlotDataGenerator {
                     debug!(payload_id, "MevBoostSlotData events channel closed");
                     break;
                 }
+
+                debug!("MevBoostSlotData: end of loop")
             }
             // cancelling here because its a critical job
             self.global_cancellation.cancel();
 
             source.join().await;
-            info!("MevBoostSlotDataGenerator: finished");
+            debug!("MevBoostSlotDataGenerator: finished");
         });
 
         (handle, receive)

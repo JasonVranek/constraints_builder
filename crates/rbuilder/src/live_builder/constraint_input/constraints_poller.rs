@@ -16,7 +16,7 @@ use rbuilder_primitives::{
 };
 use tokio::{sync::mpsc, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, info, warn};
+use tracing::{info, warn};
 use uuid::Uuid;
 
 /// Convert each transaction in constraint to individual bundles for order pipeline
@@ -85,8 +85,6 @@ pub async fn run(
             // Get the next slot
             let slot = get_next_slot(config.genesis_timestamp);
 
-            let mut sent_count = 0;
-
             // Call the constraints server to get the constraints
             match client.get_constraints(slot).await {
                 Ok(signed_constraints) => {
@@ -106,8 +104,6 @@ pub async fn run(
                                             ?e,
                                             "Failed to send constraint bundle to order pipeline"
                                         );
-                                    } else {
-                                        sent_count += 1;
                                     }
                                 }
                             }
@@ -124,16 +120,13 @@ pub async fn run(
                             .send_timeout(constraints_message.clone(), timeout)
                             .await
                         {
-                            Ok(()) => {
-                                // debug!(slot, "Sent constraint to constraint pipeline");
-                            }
+                            Ok(()) => {},
                             Err(e) => {
                                 warn!(?e, slot, "Failed to send constraint to constraint pipeline");
                                 inc_order_input_rpc_errors("other");
                             }
                         }
                     } else {
-                        // warn!("No constraints found for slot: {}", slot);
                         // Backoff before retrying
                         tokio::time::sleep(Duration::from_millis(100)).await;
                         continue;
@@ -143,8 +136,6 @@ pub async fn run(
                     warn!(?e, "Failed to get constraints");
                 }
             }
-
-            // debug!(slot, sent_count, "Sent constraint transactions as individual bundles to order pipeline");
         }
     });
 

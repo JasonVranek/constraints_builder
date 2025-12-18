@@ -4314,6 +4314,7 @@ dependencies = [
  "fabric-commitments",
  "fabric-constraints",
  "serde",
+ "tracing",
 ]
 
 [[package]]

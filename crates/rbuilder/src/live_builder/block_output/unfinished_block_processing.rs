@@ -22,7 +22,7 @@ use std::{
 };
 use time::OffsetDateTime;
 
-use tracing::{error, info, trace, warn};
+use tracing::{debug, error, info, trace, warn};
 
 use tokio_util::sync::CancellationToken;
 
@@ -397,6 +397,13 @@ impl UnfinishedBuiltBlocksInput {
     }
 
     pub fn new_block(&self, block: BiddableUnfinishedBlock) {
+        debug!(
+            block_id = block.id().0,
+            true_block_value = ?block.true_block_value,
+            algo = block.block.builder_name(),
+            "new_block: received block from builder"
+        );
+
         self.built_block_cache
             .update_from_new_unfinished_block(block.block());
 
@@ -407,6 +414,7 @@ impl UnfinishedBuiltBlocksInput {
         {
             block
         } else {
+            debug!("new_block: block not chosen as best (duplicate or lower value)");
             return;
         };
         block.chosen_as_best_at = OffsetDateTime::now_utc();
@@ -415,7 +423,7 @@ impl UnfinishedBuiltBlocksInput {
         let log_span = create_logging_span(block.block());
         let _guard = log_span.enter();
 
-        trace!("New unfinalized block");
+        debug!("new_block: setting last_unfinalized_block");
 
         // update last_unfinalized_block
         self.last_unfinalized_block.set(block);
@@ -435,7 +443,10 @@ impl UnfinishedBuiltBlocksInput {
         let id_span = tracing::info_span!("block_id", block_id = bid.block_id.0);
         let _guard_id_span = id_span.enter();
 
-        trace!(?bid, "Received seal command");
+        debug!(
+            block_id = bid.block_id.0,
+            "do_seal_command: received seal command"
+        );
 
         let mut unused_multi_blocks = Vec::new();
         let mut found_multi_block: Option<MultiPrefinalizedBlock> = None;
@@ -534,6 +545,11 @@ impl UnfinishedBuiltBlocksInput {
             let block_id = next_block.block.built_block_trace().build_block_id;
             let id_span = tracing::info_span!("block_id", block_id = block_id.0);
             let _guard_id_span = id_span.enter();
+            debug!(
+                block_id = block_id.0,
+                adjust_finalized_blocks = self.adjust_finalized_blocks,
+                "prefinalize_thread: picked up new block"
+            );
             let mut block_descriptor =
                 BuiltBlockDescriptorForSlotBidder::new(block_id, &next_block);
             let mut local_ctx = self.local_ctx();
@@ -582,8 +598,15 @@ impl UnfinishedBuiltBlocksInput {
 
             // Must update creation time here because since constructor we did some stuff and we want to measure only bidding core timings.
             block_descriptor.creation_time = OffsetDateTime::now_utc();
+            debug!(
+                block_id = block_id.0,
+                "prefinalize_thread: about to notify bidding service"
+            );
             slot_bidder.notify_new_built_block(block_descriptor);
-            trace!("Notified bidding service");
+            debug!(
+                block_id = block_id.0,
+                "prefinalize_thread: notified bidding service"
+            );
         }
         trace!("Finished prefinalize_worker");
     }
@@ -620,6 +643,10 @@ impl UnfinishedBuiltBlocksInput {
             let log_span = create_logging_span(command.block_building_helper.as_ref());
             let _guard = log_span.enter();
 
+            debug!(
+                block_id = finalize_command.prefinalized_block.block_id.0,
+                adjust_finalized_blocks, "finalize_thread: about to call finalize_block"
+            );
             let mut result = match command.finalize_block(
                 finalize_command.value,
                 finalize_command.subsidy,

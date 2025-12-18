@@ -238,7 +238,13 @@ where
         };
 
         ready_to_build.store(true, Ordering::Relaxed);
+        debug!("LiveBuilder: entering main payload events loop, ready to receive slots");
         while let Some(payload) = payload_events_channel.recv().await {
+            debug!(
+                payload_id = payload.payload_id,
+                slot = payload.slot(),
+                "LiveBuilder: received payload from channel"
+            );
             let blocklist = self.blocklist_provider.get_blocklist()?;
             if blocklist.contains(&payload.fee_recipient()) {
                 warn!(
@@ -320,9 +326,13 @@ where
             )?;
 
             // Collect constraints upfront to pass into the builder context
-            // let constraints = constraintpool_subscriber.get_constraints_for_block(payload.block());
             let constraints_message =
                 constraintpool_subscriber.get_constraints_for_slot(payload.slot());
+
+            debug!(
+                "LiveBuilder: constraints_message: {:?}",
+                constraints_message
+            );
 
             // Calculate gas to reserve for constraints based on their transaction gas limits
             let constraint_reserved_gas =
@@ -543,6 +553,11 @@ fn calculate_constraint_gas_reservation(
             "Calculated constraint gas reservation"
         );
     }
+
+    debug!(
+        "calculate_constraint_gas_reservation: total_gas: {}",
+        total_gas
+    );
 
     Ok(total_gas)
 }

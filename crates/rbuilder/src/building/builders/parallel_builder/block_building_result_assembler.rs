@@ -152,10 +152,33 @@ impl BlockBuildingResultAssembler {
                     );
 
                     if let Some(sink) = &self.sink {
-                        if let Ok(new_block) = BiddableUnfinishedBlock::new(new_block) {
-                            sink.new_block(new_block);
+                        match BiddableUnfinishedBlock::new(new_block) {
+                            Ok(new_block) => {
+                                tracing::debug!(
+                                    run_id = self.run_id,
+                                    block_id = new_block.id().0,
+                                    "Parallel builder: submitting block to sink"
+                                );
+                                sink.new_block(new_block);
+                            }
+                            Err(err) => {
+                                tracing::debug!(
+                                    ?err,
+                                    "Parallel builder: BiddableUnfinishedBlock::new failed"
+                                );
+                            }
                         }
+                    } else {
+                        tracing::debug!(
+                            run_id = self.run_id,
+                            "Parallel builder: no sink configured"
+                        );
                     }
+                } else {
+                    tracing::debug!(
+                        run_id = self.run_id,
+                        "Parallel builder: true_block_value failed"
+                    );
                 }
             }
             Err(err) => {
