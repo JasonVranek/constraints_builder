@@ -4253,6 +4253,7 @@ dependencies = [
 [[package]]
 name = "fabric-commitments"
 version = "0.1.0"
+source = "git+https://github.com/eth-fabric/fabric#84355fd05cbc534ad9eedc281e0b7f3fe9adc92b"
 dependencies = [
  "alloy",
  "axum",
@@ -4271,6 +4272,7 @@ dependencies = [
 [[package]]
 name = "fabric-common"
 version = "0.1.0"
+source = "git+https://github.com/eth-fabric/fabric#84355fd05cbc534ad9eedc281e0b7f3fe9adc92b"
 dependencies = [
  "alloy",
  "eyre",
@@ -4286,6 +4288,7 @@ dependencies = [
 [[package]]
 name = "fabric-constraints"
 version = "0.1.0"
+source = "git+https://github.com/eth-fabric/fabric#84355fd05cbc534ad9eedc281e0b7f3fe9adc92b"
 dependencies = [
  "alloy",
  "async-trait",
@@ -4305,6 +4308,7 @@ dependencies = [
 [[package]]
 name = "fabric-inclusion"
 version = "0.1.0"
+source = "git+https://github.com/eth-fabric/fabric#84355fd05cbc534ad9eedc281e0b7f3fe9adc92b"
 dependencies = [
  "alloy",
  "bincode",

@@ -210,6 +210,9 @@ sysperf = { path = "crates/sysperf" }
 metrics_macros = { path = "crates/rbuilder/src/telemetry/metrics_macros" }
 
 
-fabric-constraints = { path = "../fabric/crates/constraints" }
-fabric-commitments = { path = "../fabric/crates/commitments" }
-fabric-inclusion = { path = "../fabric/crates/inclusion", default-features = false, features = ["types", "proofs"] }
+# fabric-constraints = { path = "../fabric/crates/constraints" }
+# fabric-commitments = { path = "../fabric/crates/commitments" }
+# fabric-inclusion = { path = "../fabric/crates/inclusion", default-features = false, features = ["types", "proofs"] }
+fabric-constraints = { git = "https://github.com/eth-fabric/fabric" }
+fabric-commitments = { git = "https://github.com/eth-fabric/fabric" }
+fabric-inclusion = { git = "https://github.com/eth-fabric/fabric", default-features = false, features = ["types", "proofs"] }
