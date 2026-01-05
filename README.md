@@ -60,8 +60,7 @@ When `supports_block_merging = true`:
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `constraints_server_port` | `8547` | Port for querying constraints |
-| `constraint_server_ip` | `0.0.0.0` | IP for constraint server |
+| `constraint_server_url` | `http://127.0.0.1:8547` | URL of the constraints server to poll |
 
 ## TODO
 

@@ -9,7 +9,7 @@ pub use self::{
 };
 use fabric_constraints::types::ConstraintsMessage;
 use parking_lot::Mutex;
-use std::{net::Ipv4Addr, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 use tokio::{sync::mpsc, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
 use tracing::info;
@@ -18,10 +18,8 @@ use tracing::info;
 #[derive(Debug, Clone)]
 pub struct ConstraintInputConfig {
     pub enabled: bool,
-    /// Constraint RPC port
-    pub server_port: u16,
-    /// Constraint RPC IP address  
-    pub server_ip: Ipv4Addr,
+    /// Constraint server URL (e.g., "http://127.0.0.1:8547" or "http://host.docker.internal:9998")
+    pub server_url: String,
     /// Constraint RPC max connections
     pub serve_max_connections: u32,
     /// Timeout when sending constraints to processing channel
@@ -38,11 +36,10 @@ pub const DEFAULT_GENESIS_TIMESTAMP: u64 = 1606824023; // mainnet
 
 impl Default for ConstraintInputConfig {
     fn default() -> Self {
-        use crate::live_builder::base_config::DEFAULT_CONSTRAINT_SERVER_PORT;
+        use crate::live_builder::base_config::DEFAULT_CONSTRAINT_SERVER_URL;
         Self {
             enabled: true,
-            server_port: DEFAULT_CONSTRAINT_SERVER_PORT,
-            server_ip: Ipv4Addr::new(127, 0, 0, 1),
+            server_url: DEFAULT_CONSTRAINT_SERVER_URL.to_string(),
             serve_max_connections: DEFAULT_SERVE_MAX_CONNECTIONS,
             results_channel_timeout: DEFAULT_RESULTS_CHANNEL_TIMEOUT,
             genesis_timestamp: DEFAULT_GENESIS_TIMESTAMP,
@@ -53,16 +50,14 @@ impl Default for ConstraintInputConfig {
 impl ConstraintInputConfig {
     pub fn new(
         enabled: bool,
-        server_port: u16,
-        server_ip: Ipv4Addr,
+        server_url: String,
         serve_max_connections: u32,
         results_channel_timeout: Duration,
         genesis_timestamp: u64,
     ) -> Self {
         Self {
             enabled,
-            server_port,
-            server_ip,
+            server_url,
             serve_max_connections,
             results_channel_timeout,
             genesis_timestamp,

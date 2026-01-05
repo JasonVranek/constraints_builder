@@ -26,7 +26,7 @@ use eyre::Context;
 use jsonrpsee::RpcModule;
 use rbuilder_config::{EnvOrValue, LoggerConfig};
 use reth::chainspec::chain_value_parser;
-use reth_chainspec::ChainSpec;
+use reth_chainspec::{Chain, ChainSpec};
 use reth_db::DatabaseEnv;
 use reth_node_api::NodeTypesWithDBAdapter;
 use reth_node_ethereum::EthereumNode;
@@ -42,7 +42,7 @@ use std::{
     time::Duration,
 };
 use tokio::sync::mpsc;
-use tracing::{error, warn};
+use tracing::{error, info, warn};
 use url::Url;
 
 use super::{
@@ -83,12 +83,18 @@ pub struct BaseConfig {
     pub jsonrpc_server_ip: Ipv4Addr,
     pub jsonrpc_server_max_connections: Option<u32>,
 
-    /// Port for constraints server
-    #[serde(default = "default_constraint_server_port")]
-    pub constraint_server_port: u16,
-    /// IP for constraint server
-    #[serde(default = "default_ip")]
-    pub constraint_server_ip: Ipv4Addr,
+    /// URL for constraints server (e.g., "http://127.0.0.1:8547" or "http://host.docker.internal:9998")
+    #[serde(default = "default_constraint_server_url")]
+    pub constraint_server_url: String,
+
+    /// Optional genesis timestamp override for slot calculation.
+    /// If not set, reads from the chain spec's genesis.timestamp.
+    /// Only needed if you want to override the chain spec value.
+    pub genesis_timestamp: Option<u64>,
+
+    /// Optional chain ID override. If set, this will override the chain ID from the chain spec.
+    /// Useful for custom testnets that use a known chain's configuration but with a different chain ID.
+    pub chain_id: Option<u64>,
 
     pub ignore_cancellable_orders: bool,
     pub ignore_blobs: bool,
@@ -184,8 +190,8 @@ pub fn default_ip() -> Ipv4Addr {
     Ipv4Addr::new(0, 0, 0, 0)
 }
 
-pub fn default_constraint_server_port() -> u16 {
-    DEFAULT_CONSTRAINT_SERVER_PORT
+pub fn default_constraint_server_url() -> String {
+    DEFAULT_CONSTRAINT_SERVER_URL.to_string()
 }
 
 impl BaseConfig {
@@ -256,8 +262,19 @@ impl BaseConfig {
         let (constraint_sender, constraint_receiver) =
             mpsc::channel(constraint_input::CONSTRAINT_INPUT_BUFFER);
 
-        dbg!(&self.chain_spec()?.chain.id());
-        dbg!(&self.chain_spec()?.genesis.timestamp);
+        let chain_spec = self.chain_spec()?;
+
+        // Use genesis timestamp from chain spec, with optional config override
+        let genesis_timestamp = self
+            .genesis_timestamp
+            .unwrap_or(chain_spec.genesis.timestamp);
+
+        info!(
+            chain_id = chain_spec.chain.id(),
+            genesis_timestamp,
+            "Using chain spec"
+        );
+
         Ok(LiveBuilder::<P> {
             watchdog_timeout: self.watchdog_timeout(),
             error_storage_path: self.error_storage_path.clone(),
@@ -265,15 +282,13 @@ impl BaseConfig {
             order_input_config,
             constraint_input_config: ConstraintInputConfig {
                 enabled: true,
-                server_port: self.constraint_server_port,
-                server_ip: self.constraint_server_ip,
+                server_url: self.constraint_server_url.clone(),
                 serve_max_connections: constraint_input::DEFAULT_SERVE_MAX_CONNECTIONS,
                 results_channel_timeout: constraint_input::DEFAULT_RESULTS_CHANNEL_TIMEOUT,
-                // genesis_timestamp: self.chain_spec()?.genesis.timestamp,
-                genesis_timestamp: 1742213400, // Currently the reth hoodi spec reports 1742212800 as the genesis timestamp which is incorrect
+                genesis_timestamp,
             },
             blocks_source: slot_source,
-            chain_chain_spec: self.chain_spec()?,
+            chain_chain_spec: chain_spec,
             provider,
 
             coinbase_signer: self.coinbase_signer()?,
@@ -302,7 +317,19 @@ impl BaseConfig {
     }
 
     pub fn chain_spec(&self) -> eyre::Result<Arc<ChainSpec>> {
-        chain_value_parser(&self.chain)
+        let mut chain_spec = (*chain_value_parser(&self.chain)?).clone();
+
+        // Override chain ID if specified
+        if let Some(chain_id) = self.chain_id {
+            info!(
+                original_chain_id = chain_spec.chain.id(),
+                override_chain_id = chain_id,
+                "Overriding chain ID from config"
+            );
+            chain_spec.chain = Chain::from_id(chain_id);
+        }
+
+        Ok(Arc::new(chain_spec))
     }
 
     pub fn sbundle_mergeable_signers(&self) -> Vec<Address> {
@@ -506,7 +533,7 @@ impl BaseConfig {
 pub const DEFAULT_CL_NODE_URL: &str = "http://127.0.0.1:3500";
 pub const DEFAULT_EL_NODE_IPC_PATH: &str = "/tmp/reth.ipc";
 pub const DEFAULT_INCOMING_BUNDLES_PORT: u16 = 8645;
-pub const DEFAULT_CONSTRAINT_SERVER_PORT: u16 = 8547;
+pub const DEFAULT_CONSTRAINT_SERVER_URL: &str = "http://127.0.0.1:8547";
 pub const DEFAULT_RETH_DB_PATH: &str = "/mnt/data/reth";
 /// This will update every 2.4 hours, super reasonable.
 pub const DEFAULT_BLOCKLIST_URL_MAX_AGE_HOURS: u64 = 24;
@@ -529,8 +556,9 @@ impl Default for BaseConfig {
             jsonrpc_server_port: DEFAULT_INCOMING_BUNDLES_PORT,
             jsonrpc_server_ip: default_ip(),
             jsonrpc_server_max_connections: None,
-            constraint_server_port: DEFAULT_CONSTRAINT_SERVER_PORT,
-            constraint_server_ip: default_ip(),
+            constraint_server_url: DEFAULT_CONSTRAINT_SERVER_URL.to_string(),
+            genesis_timestamp: None,
+            chain_id: None,
             ignore_cancellable_orders: true,
             ignore_blobs: false,
             chain: "mainnet".to_string(),

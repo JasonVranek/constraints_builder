@@ -17,6 +17,7 @@ use rbuilder_primitives::{
 use tokio::{sync::mpsc, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
+use url::Url;
 use uuid::Uuid;
 
 /// Convert each transaction in constraint to individual bundles for order pipeline
@@ -77,13 +78,34 @@ pub async fn run(
     let results = results.clone();
     let timeout = config.results_channel_timeout;
 
+    // Parse the constraint server URL to extract host and port
+    let url = Url::parse(&config.server_url)
+        .context("Failed to parse constraint_server_url")?;
+    let host = url
+        .host_str()
+        .ok_or_else(|| eyre::eyre!("constraint_server_url missing host"))?
+        .to_string();
+    let port = url
+        .port()
+        .ok_or_else(|| eyre::eyre!("constraint_server_url missing port"))?;
+
     // Client to call the constraints server
-    let client = HttpConstraintsClient::new(config.server_ip.to_string(), config.server_port, None);
+    let client = HttpConstraintsClient::new(host, port, None);
 
     let handle = tokio::spawn(async move {
+        // Track the last slot we successfully polled to avoid immediate re-polling
+        let mut last_polled_slot: Option<u64> = None;
+
         loop {
             // Get the next slot
             let slot = get_next_slot(config.genesis_timestamp);
+
+            // Skip if we already successfully polled this slot
+            // It is assumed there is only one SignedConstraint object per slot
+            if last_polled_slot == Some(slot) {
+                tokio::time::sleep(Duration::from_millis(500)).await;
+                continue;
+            }
 
             // Call the constraints server to get the constraints
             match client.get_constraints(slot).await {
@@ -126,14 +148,20 @@ pub async fn run(
                                 inc_order_input_rpc_errors("other");
                             }
                         }
+                        info!("{} constraints found for slot {}", constraints_message.constraints.len(), slot);
+
+                        // Mark this slot as successfully polled
+                        last_polled_slot = Some(slot);
                     } else {
                         // Backoff before retrying
-                        tokio::time::sleep(Duration::from_millis(100)).await;
+                        warn!(slot, "No constraints found for slot");
+                        tokio::time::sleep(Duration::from_millis(500)).await;
                         continue;
                     }
                 }
                 Err(e) => {
                     warn!(?e, "Failed to get constraints");
+                    tokio::time::sleep(Duration::from_millis(500)).await;
                 }
             }
         }
@@ -141,9 +169,8 @@ pub async fn run(
 
     Ok(tokio::spawn(async move {
         info!("Constraint poller: started");
-        if global_cancel.is_cancelled() {
-            handle.abort();
-            info!("Constraint poller: finished");
-        }
+        global_cancel.cancelled().await;
+        handle.abort();
+        info!("Constraint poller: finished");
     }))
 }
