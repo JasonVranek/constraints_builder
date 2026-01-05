@@ -1,0 +1,67 @@
+log_json = true
+# log_level = "info,rbuilder=trace"
+log_level = "debug,rbuilder::building::sim=trace,rbuilder::live_builder::simulation=trace"
+redacted_telemetry_server_port = 60610
+redacted_telemetry_server_ip = "0.0.0.0"
+full_telemetry_server_port = 60600
+full_telemetry_server_ip = "0.0.0.0"
+
+coinbase_secret_key = "env:COINBASE_SECRET_KEY"
+relay_secret_key = "5eae315483f028b5cdd5d1090ff0c7618b18737ea9bf3c35047189db22835c48"
+optimistic_relay_secret_key = "5eae315483f028b5cdd5d1090ff0c7618b18737ea9bf3c35047189db22835c48"
+
+# Use genesis.json for custom chain spec from kurtosis
+chain = "/app/genesis.json"
+
+# This is the path we mount the kurtosis reth data directory to
+reth_datadir = "/app/reth_datadir"
+
+# This is the path we mount the blocklist file to
+blocklist = "/app/blocklist.json"
+
+# Genesis timestamp is now read from the chain spec (genesis.json)
+# Set this for custom chains to avoid querying the beacon client
+genesis_fork_version = "0x10000038"
+
+# cl_node_url can be a single value, array of values, or passed by an environment variables with values separated with a comma
+# Use host.docker.internal to access the host machine from within Docker
+cl_node_url = "http://host.docker.internal:56341"
+jsonrpc_server_port = 8645
+jsonrpc_server_ip = "0.0.0.0"
+
+extra_data = "🧵 constraints test"
+
+ignore_cancellable_orders = true
+
+# slot_delta_to_start_bidding_ms = -500
+slot_delta_to_start_bidding_ms = 3000
+
+sbundle_mergeable_signers = []
+live_builders = ["mgp-ordering"]
+
+enabled_relays = ["Constraints-Server"]
+
+subsidy = "0.00000000000001"
+
+root_hash_use_sparse_trie = true
+root_hash_compare_sparse_trie = false
+
+# For constraints client - URL of the constraints server to poll
+constraint_server_url = "http://host.docker.internal:9998"
+
+[[relays]]
+name = "Constraints-Server"
+# Same as constraints server port since it proxies
+# Note the test-relay must set it's own port
+# and the constraints server will forward requests
+url = "http://host.docker.internal:9998"
+mode = "full"
+max_bid_eth = "0.05"
+
+[[builders]]
+name = "mgp-ordering"
+algo = "ordering-builder"
+discard_txs = true
+sorting = "mev-gas-price"
+failed_order_retries = 1
+drop_failed_orders = true
