@@ -25,7 +25,7 @@ genesis_fork_version = "0x10000038"
 
 # cl_node_url can be a single value, array of values, or passed by an environment variables with values separated with a comma
 # Use host.docker.internal to access the host machine from within Docker
-cl_node_url = "http://host.docker.internal:56341"
+cl_node_url = "http://host.docker.internal:57109"
 jsonrpc_server_port = 8645
 jsonrpc_server_ip = "0.0.0.0"
 
@@ -33,8 +33,8 @@ extra_data = "🧵 constraints test"
 
 ignore_cancellable_orders = true
 
-# slot_delta_to_start_bidding_ms = -500
-slot_delta_to_start_bidding_ms = 3000
+# slot_delta_to_start_bidding_ms = -11500
+slot_delta_to_start_bidding_ms = 8000
 
 sbundle_mergeable_signers = []
 live_builders = ["mgp-ordering"]
@@ -47,14 +47,14 @@ root_hash_use_sparse_trie = true
 root_hash_compare_sparse_trie = false
 
 # For constraints client - URL of the constraints server to poll
-constraint_server_url = "http://host.docker.internal:9998"
+constraint_server_url = "http://relay:9998"
 
 [[relays]]
 name = "Constraints-Server"
 # Same as constraints server port since it proxies
 # Note the test-relay must set it's own port
 # and the constraints server will forward requests
-url = "http://host.docker.internal:9998"
+url = "http://relay:9998"
 mode = "full"
 max_bid_eth = "0.05"
 

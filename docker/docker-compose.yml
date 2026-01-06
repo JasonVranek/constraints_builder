@@ -1,0 +1,29 @@
+# Usage: RETH_VOLUME=$(docker volume ls -q | grep el-2-reth-builder-lighthouse) docker compose up -d
+services:
+  rbuilder:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.rbuilder
+      target: rbuilder-runtime
+    image: rbuilder:latest
+    container_name: rbuilder
+    environment:
+      - COINBASE_SECRET_KEY=${COINBASE_SECRET_KEY:-0x53321db7c1e331d93a11a41d16f004d7ff63972ec8ec7c25db329728ceeb1710}
+    volumes:
+      - ./config/constraints-builder-docker-config.toml:/app/config.toml:ro
+      - ./config/blocklist.json:/app/blocklist.json:ro
+      - reth-data:/app/reth_datadir:ro
+      - /tmp/reth-genesis.json:/app/genesis.json:ro
+      - reth_datadir:/app/reth_datadir
+    ports:
+      - "60600:60600"  # Full telemetry server
+      - "60610:60610"  # Redacted telemetry
+      - "8645:8645"    # JSON-RPC server
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: ["run", "/app/config.toml"]
+
+volumes:
+  reth_datadir:
+    external: true
+    name: ${RETH_VOLUME}
