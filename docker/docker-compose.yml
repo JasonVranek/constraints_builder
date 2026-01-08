@@ -3,7 +3,7 @@ services:
   rbuilder:
     build:
       context: ..
-      dockerfile: docker/Dockerfile.rbuilder
+      dockerfile: docker/Dockerfile.constraints-rbuilder
       target: rbuilder-runtime
     image: rbuilder:latest
     container_name: rbuilder

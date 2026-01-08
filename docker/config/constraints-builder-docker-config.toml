@@ -11,10 +11,12 @@ relay_secret_key = "5eae315483f028b5cdd5d1090ff0c7618b18737ea9bf3c35047189db2283
 optimistic_relay_secret_key = "5eae315483f028b5cdd5d1090ff0c7618b18737ea9bf3c35047189db22835c48"
 
 # Use genesis.json for custom chain spec from kurtosis
-chain = "/app/genesis.json"
+# file is mounted in fabric docker-compose.yml
+chain = "/network-configs/genesis.json"
 
-# This is the path we mount the kurtosis reth data directory to
-reth_datadir = "/app/reth_datadir"
+# Match docker-compose in fabric repo
+reth_datadir = "/data/reth/execution-data"
+el_node_ipc_path = "/data/reth/reth.ipc"
 
 # This is the path we mount the blocklist file to
 blocklist = "/app/blocklist.json"
@@ -23,15 +25,15 @@ blocklist = "/app/blocklist.json"
 # Set this for custom chains to avoid querying the beacon client
 genesis_fork_version = "0x10000038"
 
-# cl_node_url can be a single value, array of values, or passed by an environment variables with values separated with a comma
-# Use host.docker.internal to access the host machine from within Docker
-cl_node_url = "http://host.docker.internal:57109"
+# Local since lighthouse is running in the same container
+cl_node_url = "http://localhost:4000"
 jsonrpc_server_port = 8645
 jsonrpc_server_ip = "0.0.0.0"
 
 extra_data = "🧵 constraints test"
 
 ignore_cancellable_orders = true
+
 
 # slot_delta_to_start_bidding_ms = -11500
 slot_delta_to_start_bidding_ms = 8000

@@ -330,7 +330,8 @@ where
                 constraintpool_subscriber.get_constraints_for_slot(payload.slot());
 
             debug!(
-                "LiveBuilder: constraints_message: {:?}",
+                "LiveBuilder: constraints_message for slot {}: {:?}",
+                payload.slot(),
                 constraints_message
             );
 
