@@ -330,7 +330,9 @@ async fn run_submit_to_relays_job(
         // Generate the constraint proofs for the block
         let constraints_proofs = match &regular_request {
             Some(request) => {
-                debug!(parent: &submission_span, constraint_count = block.trace.appended_constraint_txs.len(), "proving constraints for regular request");
+                let constraint_count = block.trace.appended_constraint_txs.len();
+                debug!(parent: &submission_span, constraint_count, "proving constraints for regular request");
+                let proof_start = Instant::now();
                 let constraint_proofs = match prove_constraints(
                     &request.as_ref(),
                     &block.trace.appended_constraint_txs,
@@ -341,6 +343,8 @@ async fn run_submit_to_relays_job(
                         continue 'submit;
                     }
                 };
+                let proof_elapsed_ms = proof_start.elapsed().as_millis();
+                info!(parent: &submission_span, proof_elapsed_ms, constraint_count, "constraint proof generation complete");
                 constraint_proofs
             }
             None => continue 'submit,

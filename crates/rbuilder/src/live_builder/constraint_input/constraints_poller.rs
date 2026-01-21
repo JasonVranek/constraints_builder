@@ -1,9 +1,7 @@
 use std::time::Duration;
 
 use super::ConstraintInputConfig;
-use crate::{
-    live_builder::order_input::ReplaceableOrderPoolCommand, telemetry::inc_order_input_rpc_errors,
-};
+use crate::telemetry::inc_order_input_rpc_errors;
 use eyre::Context;
 use fabric_constraints::{
     client::{ConstraintsClient, HttpConstraintsClient},
@@ -60,22 +58,31 @@ fn constraint_to_individual_bundles(
     Ok(bundles)
 }
 
-fn get_next_slot(genesis_timestamp: u64) -> u64 {
+/// Calculate the current slot based on system time
+fn get_current_slot(genesis_timestamp: u64) -> u64 {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .expect("Failed to get current time")
         .as_secs();
-    let slot = (now - genesis_timestamp) / 12;
-    slot + 1
+    (now - genesis_timestamp) / 12
+}
+
+/// Get slots we should poll for constraints.
+/// We poll both the current slot AND the next slot because:
+/// - If we're in slot N-1 and building for slot N, we need slot N constraints
+/// - If we're already in slot N and building for slot N, we also need slot N constraints
+/// - Polling both ensures we don't miss constraints due to timing edge cases
+fn get_slots_to_poll(genesis_timestamp: u64) -> (u64, u64) {
+    let current_slot = get_current_slot(genesis_timestamp);
+    (current_slot, current_slot + 1)
 }
 
 pub async fn run(
     config: ConstraintInputConfig,
-    results: mpsc::Sender<ConstraintsMessage>,
-    order_sender: mpsc::Sender<ReplaceableOrderPoolCommand>,
+    constraints_pool: mpsc::Sender<ConstraintsMessage>,
     global_cancel: CancellationToken,
 ) -> eyre::Result<JoinHandle<()>> {
-    let results = results.clone();
+    let results = constraints_pool.clone();
     let timeout = config.results_channel_timeout;
 
     // Parse the constraint server URL to extract host and port
@@ -93,76 +100,96 @@ pub async fn run(
     let client = HttpConstraintsClient::new(host, port, None);
 
     let handle = tokio::spawn(async move {
-        // Track the last slot we successfully polled to avoid immediate re-polling
-        let mut last_polled_slot: Option<u64> = None;
+        // Track slots we've successfully polled to avoid re-polling
+        // We keep a small set since we only care about recent slots
+        let mut polled_slots: std::collections::HashSet<u64> = std::collections::HashSet::new();
+        let mut last_cleanup_slot: u64 = 0;
 
         loop {
-            // Get the next slot
-            let slot = get_next_slot(config.genesis_timestamp);
+            // Get both current slot and next slot to cover timing edge cases
+            let (current_slot, next_slot) = get_slots_to_poll(config.genesis_timestamp);
 
-            // Skip if we already successfully polled this slot
-            // It is assumed there is only one SignedConstraint object per slot
-            if last_polled_slot == Some(slot) {
-                tokio::time::sleep(Duration::from_millis(500)).await;
-                continue;
+            // Clean up old polled slots periodically (keep only last 5 slots)
+            if current_slot > last_cleanup_slot + 5 {
+                polled_slots.retain(|&s| s >= current_slot.saturating_sub(2));
+                last_cleanup_slot = current_slot;
             }
 
-            // Call the constraints server to get the constraints
-            match client.get_constraints(slot).await {
-                Ok(signed_constraints) => {
-                    // We assume that there is only one constraint per slot
-                    if let Some(signed_constraint) = signed_constraints.first() {
-                        let constraints_message = &signed_constraint.message;
+            // Try to poll for both slots
+            let slots_to_try = [current_slot, next_slot];
+            let mut any_polled = false;
 
-                        match constraint_to_individual_bundles(constraints_message) {
-                            Ok(constraint_bundles) => {
-                                for bundle in constraint_bundles {
-                                    let order = Order::Bundle(bundle);
-                                    let order_command = ReplaceableOrderPoolCommand::Order(order);
-                                    if let Err(e) =
-                                        order_sender.send_timeout(order_command, timeout).await
-                                    {
-                                        warn!(
-                                            ?e,
-                                            "Failed to send constraint bundle to order pipeline"
-                                        );
-                                    }
+            for &slot in &slots_to_try {
+                // Skip if we already successfully polled this slot
+                if polled_slots.contains(&slot) {
+                    continue;
+                }
+
+                // Call the constraints server to get the constraints
+                match client.get_constraints(slot).await {
+                    Ok(signed_constraints) => {
+                        // We assume that there is only one constraint per slot
+                        if let Some(signed_constraint) = signed_constraints.first() {
+                            let constraints_message = &signed_constraint.message;
+
+                            // Validate that returned constraints match the requested slot
+                            if constraints_message.slot != slot {
+                                warn!(
+                                    requested_slot = slot,
+                                    returned_slot = constraints_message.slot,
+                                    constraint_count = constraints_message.constraints.len(),
+                                    "Constraint slot mismatch! Server returned constraints for different slot than requested"
+                                );
+                                // Mark as polled anyway to avoid repeated requests
+                                polled_slots.insert(slot);
+                                continue;
+                            }
+
+                            // Send to constraint pipeline
+                            match results
+                                .send_timeout(constraints_message.clone(), timeout)
+                                .await
+                            {
+                                Ok(()) => {
+                                    info!(
+                                        slot,
+                                        current_slot,
+                                        next_slot,
+                                        constraint_count = constraints_message.constraints.len(),
+                                        "Constraints found and sent to pool"
+                                    );
+                                }
+                                Err(e) => {
+                                    warn!(?e, slot, "Failed to send constraint to constraint pipeline");
+                                    inc_order_input_rpc_errors("other");
                                 }
                             }
-                            Err(e) => {
-                                warn!(
-                                    ?e,
-                                    slot, "Failed to convert constraint to individual bundles"
-                                );
+
+                            // Mark this slot as successfully polled
+                            polled_slots.insert(slot);
+                            any_polled = true;
+                        } else {
+                            // No constraints for this slot (might not exist yet for next_slot)
+                            if slot == current_slot {
+                                // Only log warning for current slot - next slot might not be ready
+                                warn!(slot, "No constraints found for current slot");
                             }
                         }
-
-                        // Always send to constraint pipeline for fallback
-                        match results
-                            .send_timeout(constraints_message.clone(), timeout)
-                            .await
-                        {
-                            Ok(()) => {},
-                            Err(e) => {
-                                warn!(?e, slot, "Failed to send constraint to constraint pipeline");
-                                inc_order_input_rpc_errors("other");
-                            }
+                    }
+                    Err(e) => {
+                        // Only log error for current slot to reduce noise
+                        if slot == current_slot {
+                            warn!(?e, slot, "Failed to get constraints from server");
                         }
-                        info!("{} constraints found for slot {}", constraints_message.constraints.len(), slot);
-
-                        // Mark this slot as successfully polled
-                        last_polled_slot = Some(slot);
-                    } else {
-                        // Backoff before retrying
-                        warn!(slot, "No constraints found for slot");
-                        tokio::time::sleep(Duration::from_millis(500)).await;
-                        continue;
                     }
                 }
-                Err(e) => {
-                    warn!(?e, "Failed to get constraints");
-                    tokio::time::sleep(Duration::from_millis(500)).await;
-                }
+            }
+
+            // Backoff before next poll cycle
+            if any_polled {
+                tokio::time::sleep(Duration::from_millis(200)).await;
+            } else {
+                tokio::time::sleep(Duration::from_millis(500)).await;
             }
         }
     });

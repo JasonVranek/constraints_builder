@@ -178,8 +178,6 @@ where
 
         let (header_sender, header_receiver) = mpsc::channel(CLEAN_TASKS_CHANNEL_SIZE);
 
-        let orderpool_sender_for_constraints = self.orderpool_sender.clone();
-
         let orderpool_subscriber = {
             let (handle, sub) = start_orderpool_jobs(
                 self.order_input_config,
@@ -201,7 +199,6 @@ where
                 self.global_cancellation.clone(),
                 self.constraint_sender,
                 self.constraint_receiver,
-                orderpool_sender_for_constraints, // Wire constraints to order pipeline
             )
             .await?;
             inner_jobs_handles.push(handle);
@@ -329,11 +326,28 @@ where
             let constraints_message =
                 constraintpool_subscriber.get_constraints_for_slot(payload.slot());
 
-            debug!(
-                "LiveBuilder: constraints_message for slot {}: {:?}",
-                payload.slot(),
-                constraints_message
-            );
+            // Validate constraint slot matches payload slot
+            if !constraints_message.constraints.is_empty() {
+                if constraints_message.slot != payload.slot() {
+                    warn!(
+                        payload_slot = payload.slot(),
+                        constraint_slot = constraints_message.slot,
+                        constraint_count = constraints_message.constraints.len(),
+                        "SLOT MISMATCH: Constraints from pool have different slot than payload!"
+                    );
+                } else {
+                    info!(
+                        slot = payload.slot(),
+                        constraint_count = constraints_message.constraints.len(),
+                        "Constraints loaded for slot"
+                    );
+                }
+            } else {
+                debug!(
+                    slot = payload.slot(),
+                    "No constraints found in pool for slot"
+                );
+            }
 
             // Calculate gas to reserve for constraints based on their transaction gas limits
             let constraint_reserved_gas =

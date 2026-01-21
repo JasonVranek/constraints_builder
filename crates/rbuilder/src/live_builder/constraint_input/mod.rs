@@ -100,7 +100,6 @@ pub async fn start_constraintpool_jobs(
     global_cancel: CancellationToken,
     constraint_sender: mpsc::Sender<ConstraintPoolCommand>,
     constraint_receiver: mpsc::Receiver<ConstraintPoolCommand>,
-    order_sender: mpsc::Sender<crate::live_builder::order_input::ReplaceableOrderPoolCommand>,
 ) -> eyre::Result<(JoinHandle<()>, ConstraintPoolSubscriber)> {
     let constraint_pool = Arc::new(Mutex::new(ConstraintPool::new()));
     let subscriber = ConstraintPoolSubscriber {
@@ -109,11 +108,11 @@ pub async fn start_constraintpool_jobs(
 
     // Start constraints poller service
     let _poller_handle = if config.enabled {
-        let (constraint_tx, mut constraint_rx) =
+        let (constraints_pool, mut constraint_rx) =
             mpsc::channel::<ConstraintsMessage>(CONSTRAINT_INPUT_BUFFER);
 
         let poller_handle =
-            constraints_poller::run(config, constraint_tx, order_sender, global_cancel.clone())
+            constraints_poller::run(config, constraints_pool, global_cancel.clone())
                 .await?;
 
         // Bridge poller constraints to pool commands

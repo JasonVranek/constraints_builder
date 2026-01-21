@@ -15,58 +15,20 @@ use crate::{
     provider::StateProviderFactory,
 };
 use alloy_primitives::Address;
-use fabric_constraints::types::Constraint;
-use fabric_inclusion::types::InclusionPayload;
-use rbuilder_primitives::{
-    serialize::{RawTx, TxEncoding},
-    Bundle, BundleVersion, Metadata, Order, OrderId, SimulatedOrder,
-};
+use rbuilder_primitives::{OrderId, SimulatedOrder};
 use reth_chainspec::EthereumHardforks as _;
 use std::{cell::RefCell, rc::Rc, sync::Arc, thread, time::Duration};
 use tokio::sync::{broadcast, mpsc};
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, trace, warn};
-use uuid::Uuid;
 
 /// Interval for checking if last block still corresponds to the parent of the given block building context
 const CHECK_LAST_BLOCK_INTERVAL: Duration = Duration::from_millis(100);
 
-/// Convert a single constraint to a bundle for the order pipeline.
-/// The bundle targets the specified block number.
-fn constraint_to_bundle(constraint: &Constraint, target_block: u64) -> eyre::Result<Bundle> {
-    let payload = InclusionPayload::abi_decode(&constraint.payload)?;
-    let tx = payload.decode_transaction()?;
-
-    let tx_with_blobs = RawTx {
-        tx: payload.signed_tx,
-    }
-    .decode(TxEncoding::NoBlobData)?
-    .tx_with_blobs;
-
-    Ok(Bundle {
-        version: BundleVersion::V2,
-        block: Some(target_block), // Target specific block to avoid orderpool cleaning
-        min_timestamp: None,
-        max_timestamp: None,
-        txs: vec![tx_with_blobs],
-        reverting_tx_hashes: vec![], // Constraints must succeed
-        dropping_tx_hashes: vec![],
-        hash: *tx.hash(),
-        uuid: Uuid::new_v4(),
-        replacement_data: None,
-        signer: None,
-        refund_identity: None,
-        metadata: Metadata::new_received_now(),
-        refund: None,
-        external_hash: None,
-    })
-}
-
 use super::{
     block_output::unfinished_block_processing::UnfinishedBuiltBlocksInputFactory,
     order_input::{
-        self, order_replacement_manager::OrderReplacementManager, order_sink::OrderSink,
-        orderpool::OrdersForBlock,
+        self, order_replacement_manager::OrderReplacementManager, orderpool::OrdersForBlock,
     },
     payload_events,
     simulation::{OrderSimulationPool, SimulatedOrderCommand},
@@ -148,34 +110,7 @@ where
             });
         }
 
-        let (orders_for_block, mut sink) = OrdersForBlock::new_with_sink();
-
-        // Inject constraint bundles directly into the sink to bypass orderpool cleaning.
-        // This ensures constraint transactions flow through simulation for this specific block.
-        let mut injected_constraint_bundles = 0;
-        for constraint in block_ctx.constraints.iter() {
-            match constraint_to_bundle(constraint, block_ctx.block()) {
-                Ok(bundle) => {
-                    sink.insert_order(Order::Bundle(bundle));
-                    injected_constraint_bundles += 1;
-                }
-                Err(e) => {
-                    warn!(
-                        ?e,
-                        block = block_ctx.block(),
-                        "Failed to convert constraint to bundle for injection"
-                    );
-                }
-            }
-        }
-        if injected_constraint_bundles > 0 {
-            info!(
-                block = block_ctx.block(),
-                injected_constraint_bundles,
-                "Injected constraint bundles directly into order flow"
-            );
-        }
-
+        let (orders_for_block, sink) = OrdersForBlock::new_with_sink();
         // add OrderReplacementManager to manage replacements and cancellations
         let order_replacement_manager = OrderReplacementManager::new(Box::new(sink));
 

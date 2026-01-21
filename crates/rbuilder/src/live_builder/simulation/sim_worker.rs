@@ -14,7 +14,7 @@ use std::{
     time::{Duration, Instant},
 };
 use tokio_util::sync::CancellationToken;
-use tracing::error;
+use tracing::{debug, error};
 
 /// Function that continuously looks for a SimulationContext on ctx and when it finds one it polls its "request for simulation" channel (SimulationContext::requests).
 /// When the channel closes it goes back to waiting for a new SimulationContext.
@@ -34,9 +34,13 @@ pub fn run_sim_worker<P>(
         let current_sim_context = loop {
             let next_ctx = {
                 let ctxs = ctx.lock();
-                ctxs.contexts.iter().next().map(|(_, c)| c.clone())
+                // Pick the context with the highest block number (newest) to avoid
+                // workers getting stuck on old contexts that haven't been cleaned up yet
+                ctxs.contexts
+                    .values()
+                    .max_by_key(|c| c.block_ctx.block())
+                    .cloned()
             };
-            // @Perf chose random context so its more fair when we have 2 instead of 1
             if let Some(ctx) = next_ctx {
                 break ctx;
             } else {
@@ -44,6 +48,12 @@ pub fn run_sim_worker<P>(
                 sleep(Duration::from_millis(50));
             }
         };
+
+        debug!(
+            worker_id,
+            block = current_sim_context.block_ctx.block(),
+            "Sim worker picked up context"
+        );
 
         let mut local_ctx = ThreadBlockBuildingContext::default();
 

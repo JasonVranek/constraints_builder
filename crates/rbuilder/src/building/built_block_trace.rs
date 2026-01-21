@@ -3,7 +3,6 @@ use crate::building::builders::BuiltBlockId;
 use super::ExecutionResult;
 use ahash::{AHasher, HashMap, HashSet};
 use alloy_primitives::{Address, TxHash, I256, U256};
-use fabric_constraints::types::ConstraintProofs;
 use rbuilder_primitives::{
     order_statistics::OrderStatistics, Order, OrderId, OrderReplacementKey, SimulatedOrder,
 };

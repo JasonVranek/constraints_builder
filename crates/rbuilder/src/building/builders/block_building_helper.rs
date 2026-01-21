@@ -9,7 +9,7 @@ use std::{
 };
 use time::OffsetDateTime;
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, error, trace, warn};
+use tracing::{debug, error, info, trace, warn};
 
 use crate::{
     building::{
@@ -559,6 +559,9 @@ impl<
             .map(|info| info.tx.hash())
             .collect();
 
+        // Track constraint tx hashes we've already added (to detect duplicates)
+        let mut tracked_constraint_hashes: HashSet<B256> = HashSet::new();
+
         trace!(
             executed_txs = executed_tx_hashes.len(),
             constraints = constraints.len(),
@@ -566,8 +569,10 @@ impl<
             "Checking for missing constraint transactions"
         );
 
-        let mut missing_constraint_count = 0;
-        let mut appended_constraint_count = 0;
+        let mut already_included_count = 0;
+        let mut appended_count = 0;
+        let mut failed_count = 0;
+        let mut duplicate_count = 0;
 
         for (constraint_idx, constraint) in constraints.iter().enumerate() {
             // Convert Constraint to InclusionPayload
@@ -583,35 +588,52 @@ impl<
                 )))
             })?;
 
-            let constraint_tx_hash = tx.hash();
+            let constraint_tx_hash = *tx.hash();
 
-            // Check if this constraint transaction is already included
-            if executed_tx_hashes.contains(constraint_tx_hash) {
-                trace!(constraint_idx, tx_hash = ?constraint_tx_hash, "Constraint transaction already included");
+            // Check for duplicate constraint tx hashes (same tx appearing multiple times in constraints)
+            if tracked_constraint_hashes.contains(&constraint_tx_hash) {
+                warn!(
+                    constraint_idx,
+                    tx_hash = ?constraint_tx_hash,
+                    "DUPLICATE: Same constraint transaction appears multiple times in constraints list!"
+                );
+                duplicate_count += 1;
+                continue;
+            }
+            tracked_constraint_hashes.insert(constraint_tx_hash);
+
+            // Check if this constraint transaction is already included in the block
+            if executed_tx_hashes.contains(&constraint_tx_hash) {
+                trace!(constraint_idx, tx_hash = ?constraint_tx_hash, "Constraint transaction already included in block");
+                // Track ALL constraint txs for proof generation (not just force-appended ones)
+                self.built_block_trace
+                    .appended_constraint_txs
+                    .push(constraint_tx_hash);
+                already_included_count += 1;
                 continue;
             }
 
             // Constraint transaction not found, append it
-            missing_constraint_count += 1;
             debug!(
-                "Constraint transaction missing, appending tx: {:?}, from: {:?}",
-                tx.as_eip1559(),
-                tx.as_eip1559().unwrap().recover_signer()
+                constraint_idx,
+                tx_hash = ?constraint_tx_hash,
+                "Constraint transaction missing, attempting to append"
             );
 
             // Encode the transaction and execute it
             match self.execute_constraint_transaction(payload.signed_tx, local_ctx) {
                 Ok(true) => {
-                    // Transaction successfully appended, track its hash
+                    // Transaction successfully appended, track its hash for proof generation
                     if let Some(last_tx) = self.partial_block.executed_tx_infos.last() {
                         let tx_hash = last_tx.tx.hash();
                         self.built_block_trace.appended_constraint_txs.push(tx_hash);
                         debug!(constraint_idx, %tx_hash, "Constraint transaction successfully appended and tracked");
                     }
-                    appended_constraint_count += 1;
+                    appended_count += 1;
                 }
                 Ok(false) => {
-                    debug!(constraint_idx, tx_hash = ?constraint_tx_hash, "Constraint transaction failed")
+                    warn!(constraint_idx, tx_hash = ?constraint_tx_hash, "Constraint transaction execution failed (reverted or invalid)");
+                    failed_count += 1;
                 }
                 Err(err) => {
                     error!(
@@ -625,14 +647,27 @@ impl<
             }
         }
 
-        if missing_constraint_count == 0 {
-            trace!("All constraint transactions already included by building algorithms");
-        } else {
-            debug!(
-                "Constraint transactions: missing {}, appended {}",
-                missing_constraint_count, appended_constraint_count,
+        // Final validation: tracked_for_proofs should equal (already_included + appended)
+        let expected_proofs = already_included_count + appended_count;
+        let actual_proofs = self.built_block_trace.appended_constraint_txs.len();
+        if actual_proofs != expected_proofs {
+            error!(
+                expected_proofs,
+                actual_proofs,
+                "MISMATCH: Tracked proof count doesn't match expected!"
             );
         }
+
+        info!(
+            total_constraints = constraints.len(),
+            already_included = already_included_count,
+            appended = appended_count,
+            failed = failed_count,
+            duplicates = duplicate_count,
+            tracked_for_proofs = actual_proofs,
+            block = self.building_ctx.block(),
+            "Constraint transactions processing complete"
+        );
 
         Ok(())
     }

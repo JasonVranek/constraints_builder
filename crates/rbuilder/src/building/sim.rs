@@ -25,7 +25,7 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-use tracing::{error, trace};
+use tracing::{debug, error, trace};
 
 #[derive(Debug)]
 #[allow(clippy::large_enum_variant)]
@@ -119,6 +119,11 @@ impl SimTree {
                 return Ok(());
             }
             OrderNonceState::PendingNonces(pending_nonces) => {
+                debug!(
+                    order = ?order_id,
+                    pending_nonces = ?pending_nonces,
+                    "Order waiting for pending nonces (tx nonce > onchain nonce)"
+                );
                 mark_order_pending_nonce(order_id);
                 let unsatisfied_nonces = pending_nonces.len();
                 for nonce in pending_nonces {
@@ -136,6 +141,11 @@ impl SimTree {
                 );
             }
             OrderNonceState::Ready(parents) => {
+                debug!(
+                    order = ?order_id,
+                    parent_count = parents.len(),
+                    "Order ready for simulation (nonces satisfied)"
+                );
                 self.ready_orders.push(SimulationRequest {
                     id: rand::random(),
                     order,
@@ -164,10 +174,11 @@ impl SimTree {
                     // nonce invalid, maybe its optional
                     if !nonce.optional {
                         // this order will never be valid
-                        trace!(
+                        debug!(
                             order = ?order.id(),
                             ?nonce,
-                            "Dropping order because of nonce"
+                            onchain_nonce = ?onchain_nonce,
+                            "Dropping order because of nonce (tx nonce < onchain nonce)"
                         );
                         return Ok(OrderNonceState::Invalid);
                     } else {
